@@ -1,5 +1,9 @@
 #include <esp_now.h>
 #include <WiFi.h>
+#include "BLEDevice.h"
+#include "BLEServer.h"
+#include "BLEUtils.h"
+#include "BLE2902.h"
 
 // MASTER
 
@@ -12,6 +16,9 @@ bool is_waiting_for_response = false;
 String received_response = "";
 
 unsigned long slave_clock_offset;
+
+BLEServer* pServer;
+BLECharacteristic* pCharacteristic;
 
 String send_message(String message) {
   if (!is_slave_connected) {
@@ -160,12 +167,38 @@ bool sync_clocks() {
 }
 
 
+void init_bluetooth() {
+  BLEDevice::init("Valokenno");
+  pServer = BLEDevice::createServer();
+
+  BLEService *pService = pServer->createService("6459c4ca-d023-43ca-a8d4-c43710315b7f");
+
+  pCharacteristic = pService->createCharacteristic(
+    "5e076e58-df1d-4630-b418-74079207a520",
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+  );
+
+  pService->start();
+
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->addServiceUUID("6459c4ca-d023-43ca-a8d4-c43710315b7f");
+  pAdvertising->setScanResponse(true);
+  // pAdvertising->setMinPreferred(0x06);  // helps with iPhone connections
+  // pAdvertising->setMinPreferred(0x12);
+  pAdvertising->start();
+
+  Serial.println("Bluetooth service started");
+}
+
+
 void setup() {
   pinMode(LED_PIN, OUTPUT);
   Serial.begin(115200);
   Serial.println("Valokenno-IoT Master node");
 
   blink(1);
+
+  init_bluetooth();
 
   connect_slave();
 
