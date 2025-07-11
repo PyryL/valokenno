@@ -1,5 +1,6 @@
 #include <esp_now.h>
 #include <WiFi.h>
+#include <vector>
 // #include <inttypes.h> // todo
 
 // SLAVE
@@ -7,6 +8,8 @@
 #define LED_PIN 4 // led
 
 uint8_t masterMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0xB5, 0xA8};
+
+std::vector<unsigned long> motion_timestamps;
 
 void blink(int count) {
   for (int i=0; i<count; i++) {
@@ -37,6 +40,8 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
     handle_ping_pong(msg);
   } else if (message_type == "syn") {
     handle_clock_sync();
+  } else if (message_type == "tim") {
+    handle_motion_timestamp_request();
   } else {
     Serial.println("Received unexpected message: " + msg);
   }
@@ -49,11 +54,22 @@ void handle_ping_pong(String message) {
 }
 
 void handle_clock_sync() {
-  Serial.println("Received clock sync");
+  // Serial.println("Received clock sync");
   unsigned long time_now = millis();
   char time_string[11];
   sprintf(time_string, "%010lu", time_now);
   String message = "syr" + String(time_string);
+  send_response(message);
+}
+
+void handle_motion_timestamp_request() {
+  Serial.println("Received motion timestamps request");
+  motion_timestamps.push_back(12345);
+  motion_timestamps.push_back(23456);
+  String message = "";
+  for (unsigned long timestamp : motion_timestamps) {
+    message += String(timestamp) + ",";
+  }
   send_response(message);
 }
 

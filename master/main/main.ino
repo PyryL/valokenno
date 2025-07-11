@@ -4,6 +4,7 @@
 #include "BLEServer.h"
 #include "BLEUtils.h"
 #include "BLE2902.h"
+#include <vector>
 
 // MASTER
 
@@ -20,18 +21,22 @@ unsigned long slave_clock_offset;
 BLEServer* pServer;
 BLECharacteristic* pCharacteristic;
 
+bool was_detecting_motion_last_time = false;
+std::vector<unsigned long> motion_timestamps;
+
 String send_message(String message) {
   if (!is_slave_connected) {
     Serial.println("Trying to send message without connected slave");
     return "";
   }
 
+  is_waiting_for_response = true;
   bool send_success = esp_now_send(slaveMac, (uint8_t*)message.c_str(), message.length());
   if (send_success != ESP_OK) {
     Serial.println("Message send failed: " + String(send_success));
+    is_waiting_for_response = false;
     return "";
   }
-  is_waiting_for_response = true;
 
   while (is_waiting_for_response) {
     delay(1);
@@ -52,6 +57,52 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
   received_response = msg;
   is_waiting_for_response = false;
 }
+
+void split(String s, String delim, std::vector<String>* result) {
+  int start = 0;
+  int end = s.indexOf(delim);
+
+  while (end != -1) {
+    result->push_back(s.substring(start, end));
+    start = end + 1;
+    end = s.indexOf(delim, start);
+  }
+
+  result->push_back(s.substring(start));
+}
+
+
+class BluetoothCallback: public BLECharacteristicCallbacks {
+  void onRead(BLECharacteristic* pCharacteristic) {
+    Serial.println("Sending motion timestamps via bluetooth");
+
+    String value = "dev1:";
+    for (unsigned long timestamp : motion_timestamps) {
+      value += String(timestamp) + ",";
+    }
+    motion_timestamps.clear();
+
+    value += "dev2:";
+    String slave_timestamps_str = send_message("tim");
+    Serial.println("Slave timestamps: " + slave_timestamps_str);
+    std::vector<String> slave_timestamps;
+    split(slave_timestamps_str, ",", &slave_timestamps);
+    slave_timestamps.pop_back(); // trailing comma
+    for (String slave_timestamp_str : slave_timestamps) {
+      unsigned long slave_timestamp = strtoul(slave_timestamp_str.c_str(), NULL, 10);
+      unsigned long unshifted_timestamp = slave_timestamp - slave_clock_offset;
+      value += String(unshifted_timestamp) + ",";
+    }
+
+    pCharacteristic->setValue(value);
+  }
+
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    // should not end up in here
+  }
+};
+
+
 
 
 bool send_ping_pong() {
@@ -121,7 +172,13 @@ bool sync_clocks() {
   unsigned long min_offset = 9999999999999;
   unsigned long max_offset = 0;
 
-  unsigned long avg_rtt = 0;
+  unsigned long rtt[5];
+
+  // warm the connection up
+  for (int i=0; i<3; i++) {
+    send_message("syn");
+    delay(100);
+  }
 
   for (int i=0; i<5; i++) {
     unsigned long t0 = millis();
@@ -148,17 +205,17 @@ bool sync_clocks() {
       max_offset = offset;
     }
 
-    avg_rtt += t2 - t0;
+    rtt[i] = t2 - t0;
 
     delay(100);
   }
 
-  avg_rtt /= 5;
-
+  unsigned long avg_rtt = (rtt[0] + rtt[1] + rtt[2] + rtt[3] + rtt[4]) / 5;
   Serial.printf("Sync done. Average RTT %d ms\n", avg_rtt);
 
   if (max_offset - min_offset > 20) {
     Serial.printf("Warning! Great variance in clock offsets: %d - %d ms\n", min_offset, max_offset);
+    Serial.printf("Individual RTTs were %d, %d, %d, %d, %d\n", rtt[0], rtt[1], rtt[2], rtt[3], rtt[4]);
   }
 
   slave_clock_offset = avg_offset / 5;
@@ -175,8 +232,9 @@ void init_bluetooth() {
 
   pCharacteristic = pService->createCharacteristic(
     "5e076e58-df1d-4630-b418-74079207a520",
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+    BLECharacteristic::PROPERTY_READ
   );
+  pCharacteristic->setCallbacks(new BluetoothCallback());
 
   pService->start();
 
@@ -217,10 +275,19 @@ void setup() {
   Serial.println("Setup completed successfully");
 }
 
-void loop() {
-  // if (is_slave_connected) {
-  //   send_message("Moikka slave");
-  // }
+int counter = 0; // dev only
 
-  delay(10000);
+void loop() {
+  // bool detects_motion = digitalRead(MOTION_SENSOR_PIN);
+  bool detects_motion = (counter % 50 == 0);
+  if (detects_motion && !was_detecting_motion_last_time) {
+    unsigned long motion_timestamp = millis();
+    motion_timestamps.push_back(motion_timestamp);
+    Serial.println("Detected motion");
+  }
+  was_detecting_motion_last_time = detects_motion;
+  counter += 1;
+
+
+  delay(100);
 }

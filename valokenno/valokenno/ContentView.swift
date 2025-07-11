@@ -11,12 +11,23 @@ struct ContentView: View {
     let manager = BluetoothManager()
     @State var managerStateDescription: String = "Starting..."
 
+    func readValue() {
+        manager.readValue { value in
+            print("Read value \"\(value)\"")
+        }
+    }
+
     var body: some View {
         VStack {
             Image(systemName: "globe")
                 .imageScale(.large)
                 .foregroundStyle(.tint)
+
             Text(managerStateDescription)
+
+            Button(action: readValue) {
+                Label("Read value", systemImage: "globe")
+            }
         }
         .padding()
         .onAppear {
@@ -29,7 +40,9 @@ struct ContentView: View {
                 case .connecting:
                     managerStateDescription = "Connecting..."
                 case .connected:
-                    managerStateDescription = "Connected!"
+                    managerStateDescription = "Initing..."
+                case .ready:
+                    managerStateDescription = "Ready!"
                 }
             }
             manager.start()
