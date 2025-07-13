@@ -6,56 +6,10 @@
 
 #define LED_PIN 4 // led
 
-uint8_t slaveMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0x64, 0x0C};
-
-bool is_slave_connected = false;
-bool is_waiting_for_response = false;
-String received_response = "";
-
 unsigned long slave_clock_offset;
 
 bool was_detecting_motion_last_time = false;
 std::vector<unsigned long> motion_timestamps = {12345, 23456};
-
-String send_message(String message) {
-  if (!is_slave_connected) {
-    Serial.println("Trying to send message without connected slave");
-    return "";
-  }
-
-  is_waiting_for_response = true;
-  bool send_success = esp_now_send(slaveMac, (uint8_t*)message.c_str(), message.length());
-  if (send_success != ESP_OK) {
-    Serial.println("Message send failed: " + String(send_success));
-    is_waiting_for_response = false;
-    return "";
-  }
-
-  unsigned long timeout_time = millis() + 5000;
-
-  while (is_waiting_for_response) {
-    if (millis() >= timeout_time) {
-      Serial.println("Request timed out");
-      timeout_time += 60000;
-    }
-    delay(1);
-  }
-
-  String response = received_response;
-  received_response = "";
-
-  return response;
-}
-
-void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len) {
-  String msg = "";
-  for (int i = 0; i < len; i++) {
-    msg += (char)data[i];
-  }
-
-  received_response = msg;
-  is_waiting_for_response = false;
-}
 
 
 
@@ -83,41 +37,6 @@ void blink(int count) {
     } else {
       delay(10);
     }
-  }
-}
-
-void connect_slave() {
-  WiFi.mode(WIFI_STA);
-
-  // Serial.print("Waiting mac address...");
-  // while (WiFi.macAddress() == "00:00:00:00:00:00") {
-  //   delay(100);
-  //   Serial.print(".");
-  // }
-  // Serial.println("\nMAC address: " + WiFi.macAddress());
-
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("ESP-NOW init failed");
-    return;
-  }
-
-  esp_now_register_recv_cb(onReceive);
-
-  esp_now_peer_info_t peer;
-  memset(&peer, 0, sizeof(peer));
-  memcpy(peer.peer_addr, slaveMac, 6);
-  peer.channel = 0;
-  peer.encrypt = false;
-  peer.ifidx = WIFI_IF_STA;
-  esp_err_t result = esp_now_add_peer(&peer);
-  if (result != ESP_OK) {
-    Serial.printf("Slaven lisäys epäonnistui: %d\n", result);
-    return;
-  }
-  is_slave_connected = true;
-
-  if (!send_ping_pong()) {
-    is_slave_connected = false;
   }
 }
 
@@ -185,21 +104,14 @@ void setup() {
 
   blink(1);
 
-  connect_slave();
+  switchToEspNow();
+  send_ping_pong();
+  sync_clocks();
+  switchToApMode();
 
-  bool sync_success = false;
-  if (is_slave_connected) {
-    sync_success = sync_clocks();
-  }
+  setup_communications();
 
-  if (is_slave_connected && sync_success) {
-    blink(2);
-  } else {
-    blink(7);
-    return;
-  }
-
-  Serial.println("Setup completed successfully");
+  Serial.println("Setup completed");
 }
 
 void loop() {
@@ -213,6 +125,7 @@ void loop() {
   // was_detecting_motion_last_time = detects_motion;
   // counter += 1;
 
+  loop_communications();
 
   delay(100);
 }

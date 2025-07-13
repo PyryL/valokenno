@@ -74,7 +74,7 @@ void handle_motion_timestamp_request() {
   if (message.length() > 0) {
     message.remove(message.length() - 1);
   }
-  motion_timestamps.clear();
+  // motion_timestamps.clear();
   send_response(message);
 }
 
