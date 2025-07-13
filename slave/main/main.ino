@@ -9,7 +9,7 @@
 
 uint8_t masterMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0xB5, 0xA8};
 
-std::vector<unsigned long> motion_timestamps;
+std::vector<unsigned long> motion_timestamps = {123450, 234560};
 
 void blink(int count) {
   for (int i=0; i<count; i++) {
@@ -25,7 +25,10 @@ void blink(int count) {
 }
 
 void send_response(String message) {
-  esp_now_send(masterMac, (uint8_t*)message.c_str(), message.length());
+  esp_err_t success = esp_now_send(masterMac, (uint8_t*)message.c_str(), message.length());
+  if (success != ESP_OK) {
+    Serial.println("Response sending failed: " + success);
+  }
 }
 
 void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len) {
@@ -33,7 +36,7 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
   for (int i = 0; i < len; i++) {
     msg += (char)data[i];
   }
-  
+
   String message_type = msg.substring(0, 3);
 
   if (message_type == "pin") {
@@ -64,12 +67,14 @@ void handle_clock_sync() {
 
 void handle_motion_timestamp_request() {
   Serial.println("Received motion timestamps request");
-  motion_timestamps.push_back(12345);
-  motion_timestamps.push_back(23456);
   String message = "";
   for (unsigned long timestamp : motion_timestamps) {
     message += String(timestamp) + ",";
   }
+  if (message.length() > 0) {
+    message.remove(message.length() - 1);
+  }
+  motion_timestamps.clear();
   send_response(message);
 }
 
@@ -113,6 +118,6 @@ void setup() {
 }
 
 void loop() {
-  //
+  // TODO: detect motion and push timestamps to motion_timestamps 
   delay(1000);
 }
