@@ -1,9 +1,5 @@
 #include <esp_now.h>
 #include <WiFi.h>
-#include "BLEDevice.h"
-#include "BLEServer.h"
-#include "BLEUtils.h"
-#include "BLE2902.h"
 #include <vector>
 
 // MASTER
@@ -17,9 +13,6 @@ bool is_waiting_for_response = false;
 String received_response = "";
 
 unsigned long slave_clock_offset;
-
-BLEServer* pServer;
-BLECharacteristic* pCharacteristic;
 
 bool was_detecting_motion_last_time = false;
 std::vector<unsigned long> motion_timestamps = {12345, 23456};
@@ -63,52 +56,6 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
   received_response = msg;
   is_waiting_for_response = false;
 }
-
-void split(String s, String delim, std::vector<String>* result) {
-  int start = 0;
-  int end = s.indexOf(delim);
-
-  while (end != -1) {
-    result->push_back(s.substring(start, end));
-    start = end + 1;
-    end = s.indexOf(delim, start);
-  }
-
-  result->push_back(s.substring(start));
-}
-
-
-class BluetoothCallback: public BLECharacteristicCallbacks {
-  void onRead(BLECharacteristic* pCharacteristic) {
-    Serial.println("Sending motion timestamps via bluetooth");
-
-    String value = "dev1,";
-    for (unsigned long timestamp : motion_timestamps) {
-      value += String(timestamp) + ",";
-    }
-    value.remove(value.length() - 1);
-    motion_timestamps.clear();
-
-    value += ";dev2,";
-    String slave_timestamps_str = send_message("tim");
-    Serial.println("Slave timestamps: " + slave_timestamps_str);
-    std::vector<String> slave_timestamps;
-    split(slave_timestamps_str, ",", &slave_timestamps);
-    for (String slave_timestamp_str : slave_timestamps) {
-      unsigned long slave_timestamp = strtoul(slave_timestamp_str.c_str(), NULL, 10);
-      unsigned long unshifted_timestamp = slave_timestamp - slave_clock_offset;
-      value += String(unshifted_timestamp) + ",";
-    }
-    value.remove(value.length() - 1);
-
-    pCharacteristic->setValue(value);
-  }
-
-  void onWrite(BLECharacteristic* pCharacteristic) {
-    // should not end up in here
-  }
-};
-
 
 
 
@@ -231,39 +178,12 @@ bool sync_clocks() {
 }
 
 
-void init_bluetooth() {
-  BLEDevice::init("Valokenno");
-  pServer = BLEDevice::createServer();
-
-  BLEService *pService = pServer->createService("6459c4ca-d023-43ca-a8d4-c43710315b7f");
-
-  pCharacteristic = pService->createCharacteristic(
-    "5e076e58-df1d-4630-b418-74079207a520",
-    BLECharacteristic::PROPERTY_READ
-  );
-  pCharacteristic->setCallbacks(new BluetoothCallback());
-
-  pService->start();
-
-  BLEAdvertising *pAdvertising = pServer->getAdvertising();
-  pAdvertising->addServiceUUID("6459c4ca-d023-43ca-a8d4-c43710315b7f");
-  pAdvertising->setScanResponse(true);
-  // pAdvertising->setMinPreferred(0x06);  // helps with iPhone connections
-  // pAdvertising->setMinPreferred(0x12);
-  pAdvertising->start();
-
-  Serial.println("Bluetooth service started");
-}
-
-
 void setup() {
   pinMode(LED_PIN, OUTPUT);
   Serial.begin(115200);
   Serial.println("Valokenno-IoT Master node");
 
   blink(1);
-
-  init_bluetooth();
 
   connect_slave();
 
