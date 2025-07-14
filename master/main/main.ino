@@ -58,12 +58,12 @@ bool sync_clocks() {
     String response = send_message("syn");
     unsigned long t2 = millis();
 
-    if (response.length() != 13 || response.substring(0, 3) != "syr") {
+    if (response.length() < 4 || response.substring(0, 3) != "syr") {
       Serial.println("Sync failed: invalid response from slave, invalid format. \"" + response + "\"");
       return false;
     }
     char* end_ptr;
-    unsigned long t1 = strtoul(response.substring(3, 13).c_str(), &end_ptr, 10);
+    unsigned long t1 = strtoul(response.substring(3).c_str(), &end_ptr, 10);
     if (*end_ptr != '\0') { // conversion failed
       Serial.println("Sync failed: invalid response from slave, conversion failed. \"" + response + "\"");
       return false;

@@ -86,7 +86,7 @@ String send_message(String message) {
   esp_err_t send_success = esp_now_send(slaveMac, (uint8_t*)message.c_str(), message.length());
 
   while (esp_now_waiting_response) {
-    delay(10);
+    delay(1);
   }
 
   String response = String(esp_now_received_response);
