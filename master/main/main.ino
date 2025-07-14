@@ -1,114 +1,15 @@
 #include <esp_now.h>
 #include <WiFi.h>
-#include "BLEDevice.h"
-#include "BLEServer.h"
-#include "BLEUtils.h"
-#include "BLE2902.h"
 #include <vector>
 
 // MASTER
 
 #define LED_PIN 4 // led
 
-uint8_t slaveMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0x64, 0x0C};
-
-bool is_slave_connected = false;
-bool is_waiting_for_response = false;
-String received_response = "";
-
 unsigned long slave_clock_offset;
-
-BLEServer* pServer;
-BLECharacteristic* pCharacteristic;
 
 bool was_detecting_motion_last_time = false;
 std::vector<unsigned long> motion_timestamps = {12345, 23456};
-
-String send_message(String message) {
-  if (!is_slave_connected) {
-    Serial.println("Trying to send message without connected slave");
-    return "";
-  }
-
-  is_waiting_for_response = true;
-  bool send_success = esp_now_send(slaveMac, (uint8_t*)message.c_str(), message.length());
-  if (send_success != ESP_OK) {
-    Serial.println("Message send failed: " + String(send_success));
-    is_waiting_for_response = false;
-    return "";
-  }
-
-  unsigned long timeout_time = millis() + 5000;
-
-  while (is_waiting_for_response) {
-    if (millis() >= timeout_time) {
-      Serial.println("Request timed out");
-      timeout_time += 60000;
-    }
-    delay(1);
-  }
-
-  String response = received_response;
-  received_response = "";
-
-  return response;
-}
-
-void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len) {
-  String msg = "";
-  for (int i = 0; i < len; i++) {
-    msg += (char)data[i];
-  }
-
-  received_response = msg;
-  is_waiting_for_response = false;
-}
-
-void split(String s, String delim, std::vector<String>* result) {
-  int start = 0;
-  int end = s.indexOf(delim);
-
-  while (end != -1) {
-    result->push_back(s.substring(start, end));
-    start = end + 1;
-    end = s.indexOf(delim, start);
-  }
-
-  result->push_back(s.substring(start));
-}
-
-
-class BluetoothCallback: public BLECharacteristicCallbacks {
-  void onRead(BLECharacteristic* pCharacteristic) {
-    Serial.println("Sending motion timestamps via bluetooth");
-
-    String value = "dev1,";
-    for (unsigned long timestamp : motion_timestamps) {
-      value += String(timestamp) + ",";
-    }
-    value.remove(value.length() - 1);
-    motion_timestamps.clear();
-
-    value += ";dev2,";
-    String slave_timestamps_str = send_message("tim");
-    Serial.println("Slave timestamps: " + slave_timestamps_str);
-    std::vector<String> slave_timestamps;
-    split(slave_timestamps_str, ",", &slave_timestamps);
-    for (String slave_timestamp_str : slave_timestamps) {
-      unsigned long slave_timestamp = strtoul(slave_timestamp_str.c_str(), NULL, 10);
-      unsigned long unshifted_timestamp = slave_timestamp - slave_clock_offset;
-      value += String(unshifted_timestamp) + ",";
-    }
-    value.remove(value.length() - 1);
-
-    pCharacteristic->setValue(value);
-  }
-
-  void onWrite(BLECharacteristic* pCharacteristic) {
-    // should not end up in here
-  }
-};
-
 
 
 
@@ -139,41 +40,6 @@ void blink(int count) {
   }
 }
 
-void connect_slave() {
-  WiFi.mode(WIFI_STA);
-
-  // Serial.print("Waiting mac address...");
-  // while (WiFi.macAddress() == "00:00:00:00:00:00") {
-  //   delay(100);
-  //   Serial.print(".");
-  // }
-  // Serial.println("\nMAC address: " + WiFi.macAddress());
-
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("ESP-NOW init failed");
-    return;
-  }
-
-  esp_now_register_recv_cb(onReceive);
-
-  esp_now_peer_info_t peer;
-  memset(&peer, 0, sizeof(peer));
-  memcpy(peer.peer_addr, slaveMac, 6);
-  peer.channel = 0;
-  peer.encrypt = false;
-  peer.ifidx = WIFI_IF_STA;
-  esp_err_t result = esp_now_add_peer(&peer);
-  if (result != ESP_OK) {
-    Serial.printf("Slaven lisäys epäonnistui: %d\n", result);
-    return;
-  }
-  is_slave_connected = true;
-
-  if (!send_ping_pong()) {
-    is_slave_connected = false;
-  }
-}
-
 bool sync_clocks() {
   unsigned long avg_offset;
   unsigned long min_offset = 9999999999999;
@@ -192,12 +58,12 @@ bool sync_clocks() {
     String response = send_message("syn");
     unsigned long t2 = millis();
 
-    if (response.length() != 13 || response.substring(0, 3) != "syr") {
+    if (response.length() < 4 || response.substring(0, 3) != "syr") {
       Serial.println("Sync failed: invalid response from slave, invalid format. \"" + response + "\"");
       return false;
     }
     char* end_ptr;
-    unsigned long t1 = strtoul(response.substring(3, 13).c_str(), &end_ptr, 10);
+    unsigned long t1 = strtoul(response.substring(3).c_str(), &end_ptr, 10);
     if (*end_ptr != '\0') { // conversion failed
       Serial.println("Sync failed: invalid response from slave, conversion failed. \"" + response + "\"");
       return false;
@@ -231,31 +97,6 @@ bool sync_clocks() {
 }
 
 
-void init_bluetooth() {
-  BLEDevice::init("Valokenno");
-  pServer = BLEDevice::createServer();
-
-  BLEService *pService = pServer->createService("6459c4ca-d023-43ca-a8d4-c43710315b7f");
-
-  pCharacteristic = pService->createCharacteristic(
-    "5e076e58-df1d-4630-b418-74079207a520",
-    BLECharacteristic::PROPERTY_READ
-  );
-  pCharacteristic->setCallbacks(new BluetoothCallback());
-
-  pService->start();
-
-  BLEAdvertising *pAdvertising = pServer->getAdvertising();
-  pAdvertising->addServiceUUID("6459c4ca-d023-43ca-a8d4-c43710315b7f");
-  pAdvertising->setScanResponse(true);
-  // pAdvertising->setMinPreferred(0x06);  // helps with iPhone connections
-  // pAdvertising->setMinPreferred(0x12);
-  pAdvertising->start();
-
-  Serial.println("Bluetooth service started");
-}
-
-
 void setup() {
   pinMode(LED_PIN, OUTPUT);
   Serial.begin(115200);
@@ -263,23 +104,14 @@ void setup() {
 
   blink(1);
 
-  init_bluetooth();
+  switchToEspNow();
+  send_ping_pong();
+  sync_clocks();
+  switchToApMode();
 
-  connect_slave();
+  setup_communications();
 
-  bool sync_success = false;
-  if (is_slave_connected) {
-    sync_success = sync_clocks();
-  }
-
-  if (is_slave_connected && sync_success) {
-    blink(2);
-  } else {
-    blink(7);
-    return;
-  }
-
-  Serial.println("Setup completed successfully");
+  Serial.println("Setup completed");
 }
 
 void loop() {
@@ -293,6 +125,7 @@ void loop() {
   // was_detecting_motion_last_time = detects_motion;
   // counter += 1;
 
+  loop_communications();
 
   delay(100);
 }

@@ -1,7 +1,6 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include <vector>
-// #include <inttypes.h> // todo
 
 // SLAVE
 
@@ -58,10 +57,7 @@ void handle_ping_pong(String message) {
 
 void handle_clock_sync() {
   // Serial.println("Received clock sync");
-  unsigned long time_now = millis();
-  char time_string[11];
-  sprintf(time_string, "%010lu", time_now);
-  String message = "syr" + String(time_string);
+  String message = "syr" + String(millis());
   send_response(message);
 }
 
@@ -74,7 +70,7 @@ void handle_motion_timestamp_request() {
   if (message.length() > 0) {
     message.remove(message.length() - 1);
   }
-  motion_timestamps.clear();
+  // motion_timestamps.clear();
   send_response(message);
 }
 
