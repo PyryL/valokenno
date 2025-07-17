@@ -6,6 +6,8 @@
 
 VL53L0X sensor;
 
+bool is_sensor_set_up_successfully = false;
+
 unsigned long last_sensor_timestamp = 0;
 bool did_detect_motion_last_time = false;
 
@@ -37,9 +39,15 @@ void setup_sensor() {
   }
 
   sensor.startContinuous();
+
+  is_sensor_set_up_successfully = true;
 }
 
 void loop_sensor() {
+  if (!is_sensor_set_up_successfully) {
+    return;
+  }
+
   uint16_t distance_reading = sensor.readRangeContinuousMillimeters();
   unsigned long timestamp = millis();
 
