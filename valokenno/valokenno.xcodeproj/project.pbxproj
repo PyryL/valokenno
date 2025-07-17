@@ -10,9 +10,22 @@
 		44415B1E2E2012070009C8A8 /* valokenno.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = valokenno.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		44D27CB52E295C3D00893027 /* Exceptions for "valokenno" folder in "valokenno" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 44415B1D2E2012070009C8A8 /* valokenno */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		44415B202E2012070009C8A8 /* valokenno */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				44D27CB52E295C3D00893027 /* Exceptions for "valokenno" folder in "valokenno" target */,
+			);
 			path = valokenno;
 			sourceTree = "<group>";
 		};
@@ -256,6 +269,7 @@
 				DEVELOPMENT_TEAM = K464C9RC38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = valokenno/Info.plist;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to the Valokenno.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -285,6 +299,7 @@
 				DEVELOPMENT_TEAM = K464C9RC38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = valokenno/Info.plist;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to the Valokenno.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

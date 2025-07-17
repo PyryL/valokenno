@@ -8,21 +8,15 @@
 import SwiftUI
 
 struct ContentView: View {
-    let manager = BluetoothManager()
-    @State var managerStateDescription: String = "Starting..."
-    @State var managerStateColor: Color = .red
+    let manager = ConnectionManager()
+    @State var connectionLabel: String = "N/A"
     @State var timestamps: ([UInt32], [UInt32])? = nil
 
-    func readValue() {
-        timestamps = nil
-        manager.readValue { value in
-            print("Read value \"\(value)\"")
-            do {
-                let (t1, t2) = try TimestampParser.parse(value)
-                timestamps = (t1, t2)
-            } catch {
-                print("parse failed")
-            }
+    private func checkConnection() {
+        connectionLabel = "Checking..."
+        Task {
+            let isConnected = await manager.checkConnection()
+            connectionLabel = isConnected ? "Connected" : "Not connected"
         }
     }
 
@@ -62,43 +56,22 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    HStack {
-                        Circle()
-                            .frame(width: 32, height: 32)
-                            .foregroundStyle(managerStateColor)
-                        Text(managerStateDescription)
-                    }
+                    Text(connectionLabel)
+                        .onTapGesture {
+                            checkConnection()
+                        }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: readValue) {
-                        Label("Read value", systemImage: "arrow.down.circle")
-                            .labelStyle(.titleAndIcon)
-                            .padding()
-                    }
-                }
+//                ToolbarItem(placement: .topBarTrailing) {
+//                    Button(action: readValue) {
+//                        Label("Read value", systemImage: "arrow.down.circle")
+//                            .labelStyle(.titleAndIcon)
+//                            .padding()
+//                    }
+//                }
             }
         }
         .onAppear {
-            manager.stateCallback = {
-                switch manager.state {
-                case .notStarted, .waitingPower:
-                    managerStateDescription = "Starting..."
-                    managerStateColor = .red
-                case .scanning:
-                    managerStateDescription = "Scanning..."
-                    managerStateColor = .red
-                case .connecting:
-                    managerStateDescription = "Connecting..."
-                    managerStateColor = .orange
-                case .connected:
-                    managerStateDescription = "Initing..."
-                    managerStateColor = .orange
-                case .ready:
-                    managerStateDescription = "Ready!"
-                    managerStateColor = .green
-                }
-            }
-            manager.start()
+            checkConnection()
         }
     }
 }
