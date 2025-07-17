@@ -20,6 +20,15 @@ struct ContentView: View {
         }
     }
 
+    private func getTimestamps() {
+        timestamps = nil
+        Task {
+            if let responseString = await manager.getTimestamps() {
+                timestamps = try? TimestampParser.parse(responseString)
+            }
+        }
+    }
+
     private func formatTimestamp(_ timestamp: UInt32) -> String {
         let formatter = NumberFormatter()
         formatter.minimumFractionDigits = 4
@@ -61,13 +70,13 @@ struct ContentView: View {
                             checkConnection()
                         }
                 }
-//                ToolbarItem(placement: .topBarTrailing) {
-//                    Button(action: readValue) {
-//                        Label("Read value", systemImage: "arrow.down.circle")
-//                            .labelStyle(.titleAndIcon)
-//                            .padding()
-//                    }
-//                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: getTimestamps) {
+                        Label("Read value", systemImage: "arrow.down.circle")
+                            .labelStyle(.titleAndIcon)
+                            .padding()
+                    }
+                }
             }
         }
         .onAppear {
