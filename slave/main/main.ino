@@ -8,7 +8,7 @@
 
 uint8_t masterMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0xB5, 0xA8};
 
-std::vector<unsigned long> motion_timestamps = {123450, 234560};
+std::vector<unsigned long> motion_timestamps = {};
 
 void blink(int count) {
   for (int i=0; i<count; i++) {
@@ -110,10 +110,12 @@ void setup() {
 
   setup_wifi();
 
+  setup_sensor();
+
   blink(1);
 }
 
 void loop() {
-  // TODO: detect motion and push timestamps to motion_timestamps 
-  delay(1000);
+  loop_sensor();
+  // delay(100);
 }
