@@ -8,9 +8,7 @@
 
 unsigned long slave_clock_offset;
 
-bool was_detecting_motion_last_time = false;
-std::vector<unsigned long> motion_timestamps = {12345, 23456};
-
+std::vector<unsigned long> motion_timestamps = {};
 
 
 bool send_ping_pong() {
@@ -111,21 +109,15 @@ void setup() {
 
   setup_communications();
 
+  setup_sensor();
+
   Serial.println("Setup completed");
 }
 
 void loop() {
-  // bool detects_motion = digitalRead(MOTION_SENSOR_PIN);
-  // bool detects_motion = (counter % 50 == 0);
-  // if (detects_motion && !was_detecting_motion_last_time) {
-  //   unsigned long motion_timestamp = millis();
-  //   motion_timestamps.push_back(motion_timestamp);
-  //   Serial.println("Detected motion");
-  // }
-  // was_detecting_motion_last_time = detects_motion;
-  // counter += 1;
-
   loop_communications();
 
-  delay(100);
+  loop_sensor();
+
+  // delay(100);
 }
