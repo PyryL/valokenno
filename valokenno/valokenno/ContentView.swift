@@ -8,69 +8,72 @@
 import SwiftUI
 
 struct ContentView: View {
-    let manager = BluetoothManager()
-    @State var managerStateDescription: String = "Starting..."
-    @State var managerStateColor: Color = .red
+    let manager = ConnectionManager()
+    @State var connectionLabel: String = "N/A"
     @State var timestamps: ([UInt32], [UInt32])? = nil
+    @State var selectedTimestampDevice1: UInt32? = nil
+    @State var selectedTimestampDevice2: UInt32? = nil
 
-    func readValue() {
+    private func checkConnection() {
+        connectionLabel = "Checking..."
+        Task {
+            let isConnected = await manager.checkConnection()
+            connectionLabel = isConnected ? "Connected" : "Not connected"
+        }
+    }
+
+    private func getTimestamps() {
         timestamps = nil
-        manager.readValue { value in
-            print("Read value \"\(value)\"")
-            do {
-                let (t1, t2) = try TimestampParser.parse(value)
-                timestamps = (t1, t2)
-            } catch {
-                print("parse failed")
+        selectedTimestampDevice1 = nil
+        selectedTimestampDevice2 = nil
+        Task {
+            if let responseString = await manager.getTimestamps() {
+                timestamps = try? TimestampParser.parse(responseString)
             }
         }
     }
 
-    private func formatTimestamp(_ timestamp: UInt32) -> String {
-        let formatter = NumberFormatter()
-        formatter.minimumFractionDigits = 4
-        formatter.maximumFractionDigits = 4
-        formatter.usesGroupingSeparator = false
-        let seconds = Double(timestamp) / 1000
-        return formatter.string(from: seconds as NSNumber) ?? "\(seconds)"
-    }
-
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    if let timestamps {
-                        ForEach(timestamps.0, id: \.self) { timestamp in
-                            Text("\(formatTimestamp(timestamp))")
+            VStack {
+                List {
+                    Section {
+                        if let timestamps {
+                            TimestampList(timestamps: timestamps.0, selectedTimestamp: $selectedTimestampDevice1)
                         }
+                    } header: {
+                        Text("Device 1")
                     }
-                } header: {
-                    Text("Device 1")
+
+                    Section {
+                        if let timestamps {
+                            TimestampList(timestamps: timestamps.1, selectedTimestamp: $selectedTimestampDevice2)
+                        }
+                    } header: {
+                        Text("Device 2")
+                    }
                 }
 
-                Section {
-                    if let timestamps {
-                        ForEach(timestamps.1, id: \.self) { timestamp in
-                            Text("\(formatTimestamp(timestamp))")
-                        }
-                    }
-                } header: {
-                    Text("Device 2")
+                if let selectedTimestampDevice1, let selectedTimestampDevice2, selectedTimestampDevice2 > selectedTimestampDevice1 {
+                    Text("\(Formatters.formatTimestamp(selectedTimestampDevice2 - selectedTimestampDevice1, digits: 2))")
+                        .monospaced()
+                        .bold()
+                } else {
+                    Text("-,--")
+                        .monospaced()
                 }
             }
             .navigationTitle("Valokenno")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    HStack {
-                        Circle()
-                            .frame(width: 32, height: 32)
-                            .foregroundStyle(managerStateColor)
-                        Text(managerStateDescription)
-                    }
+                    Text(connectionLabel)
+                        .onTapGesture {
+                            checkConnection()
+                        }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: readValue) {
+                    Button(action: getTimestamps) {
                         Label("Read value", systemImage: "arrow.down.circle")
                             .labelStyle(.titleAndIcon)
                             .padding()
@@ -79,26 +82,26 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            manager.stateCallback = {
-                switch manager.state {
-                case .notStarted, .waitingPower:
-                    managerStateDescription = "Starting..."
-                    managerStateColor = .red
-                case .scanning:
-                    managerStateDescription = "Scanning..."
-                    managerStateColor = .red
-                case .connecting:
-                    managerStateDescription = "Connecting..."
-                    managerStateColor = .orange
-                case .connected:
-                    managerStateDescription = "Initing..."
-                    managerStateColor = .orange
-                case .ready:
-                    managerStateDescription = "Ready!"
-                    managerStateColor = .green
-                }
+            checkConnection()
+        }
+    }
+}
+
+struct TimestampList: View {
+    var timestamps: [UInt32]
+    @Binding var selectedTimestamp: UInt32?
+
+    var body: some View {
+        ForEach(timestamps, id: \.self) { timestamp in
+            HStack {
+                Image(systemName: "checkmark")
+                    .opacity(timestamp == selectedTimestamp ? 1 : 0)
+                Text("\(Formatters.formatTimestamp(timestamp))")
+                    .monospaced()
             }
-            manager.start()
+            .onTapGesture {
+                selectedTimestamp = timestamp
+            }
         }
     }
 }
