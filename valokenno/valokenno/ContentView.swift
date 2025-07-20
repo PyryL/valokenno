@@ -14,6 +14,9 @@ struct ContentView: View {
     @State var selectedTimestampDevice1: UInt32? = nil
     @State var selectedTimestampDevice2: UInt32? = nil
 
+    @State var isLoadingTimestamps: Bool = false
+    @State var isClearingTimestamps: Bool = false
+
     private func checkConnection() {
         connectionLabel = "Checking..."
         Task {
@@ -23,23 +26,37 @@ struct ContentView: View {
     }
 
     private func getTimestamps() {
+        guard !isLoadingTimestamps else {
+            return
+        }
+
         timestamps = nil
         selectedTimestampDevice1 = nil
         selectedTimestampDevice2 = nil
+        isLoadingTimestamps = true
+
         Task {
             if let responseString = await manager.getTimestamps() {
                 timestamps = try? TimestampParser.parse(responseString)
             }
+            isLoadingTimestamps = false
         }
     }
 
     private func clearTimestamps() {
+        guard !isClearingTimestamps else {
+            return
+        }
+
+        isClearingTimestamps = true
+
         Task {
             if await manager.clearTimestamps() {
                 timestamps = nil
                 selectedTimestampDevice1 = nil
                 selectedTimestampDevice2 = nil
             }
+            isClearingTimestamps = false
         }
     }
 
@@ -84,14 +101,22 @@ struct ContentView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: clearTimestamps) {
-                        Label("Clear timestamps", systemImage: "trash")
-                            .padding()
+                        if isClearingTimestamps {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                        } else {
+                            Image(systemName: "trash")
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: getTimestamps) {
-                        Label("Load timestamps", systemImage: "arrow.down.circle")
-                            .padding()
+                        if isLoadingTimestamps {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                        } else {
+                            Image(systemName: "arrow.down.circle")
+                        }
                     }
                 }
             }
