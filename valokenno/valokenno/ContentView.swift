@@ -107,15 +107,19 @@ struct TimestampList: View {
     @Binding var selectedTimestamp: UInt32?
 
     var body: some View {
-        ForEach(timestamps, id: \.self) { timestamp in
-            HStack {
-                Image(systemName: "checkmark")
-                    .opacity(timestamp == selectedTimestamp ? 1 : 0)
-                Text("\(Formatters.formatTimestamp(timestamp))")
-                    .monospaced()
-            }
-            .onTapGesture {
-                selectedTimestamp = timestamp
+        if timestamps.isEmpty {
+            Text("No timestamps")
+        } else {
+            ForEach(timestamps, id: \.self) { timestamp in
+                HStack {
+                    Image(systemName: "checkmark")
+                        .opacity(timestamp == selectedTimestamp ? 1 : 0)
+                    Text("\(Formatters.formatTimestamp(timestamp))")
+                        .monospaced()
+                }
+                .onTapGesture {
+                    selectedTimestamp = timestamp
+                }
             }
         }
     }
