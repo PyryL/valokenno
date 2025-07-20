@@ -39,6 +39,12 @@ void send_response(String message) {
 }
 
 void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len) {
+  // handle clock sync immediately in the interruption to minimize latency
+  if (len == 3 && data[0] == 's' && data[1] == 'y' && data[2] == 'n') {
+    handle_clock_sync();
+    return;
+  }
+
   if (has_pending_request) {
     Serial.println("Received request while previous was still unhandled");
     return;
@@ -62,8 +68,18 @@ void handle_ping_pong(String message) {
 
 void handle_clock_sync() {
   // Serial.println("Received clock sync");
-  String message = "syr" + String(millis());
-  send_response(message);
+  char response[14];
+  response[0] = 's';
+  response[1] = 'y';
+  response[2] = 'r';
+
+  unsigned long current_time = millis();
+  sprintf(&response[3], "%010lu", current_time);
+
+  esp_err_t success = esp_now_send(masterMac, (uint8_t*)response, 13);
+  if (success != ESP_OK) {
+    Serial.println("Sync response sending failed: " + String(success));
+  }
 }
 
 void handle_motion_timestamp_request() {
@@ -131,8 +147,6 @@ void loop() {
 
     if (message_type == "pin") {
       handle_ping_pong(msg);
-    } else if (message_type == "syn") {
-      handle_clock_sync();
     } else if (message_type == "tim") {
       handle_motion_timestamp_request();
     } else {
