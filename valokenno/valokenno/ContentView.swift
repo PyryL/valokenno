@@ -33,6 +33,16 @@ struct ContentView: View {
         }
     }
 
+    private func clearTimestamps() {
+        Task {
+            if await manager.clearTimestamps() {
+                timestamps = nil
+                selectedTimestampDevice1 = nil
+                selectedTimestampDevice2 = nil
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack {
@@ -73,9 +83,14 @@ struct ContentView: View {
                         }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: clearTimestamps) {
+                        Label("Clear timestamps", systemImage: "trash")
+                            .padding()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button(action: getTimestamps) {
-                        Label("Read value", systemImage: "arrow.down.circle")
-                            .labelStyle(.titleAndIcon)
+                        Label("Load timestamps", systemImage: "arrow.down.circle")
                             .padding()
                     }
                 }

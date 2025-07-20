@@ -77,4 +77,45 @@ class ConnectionManager {
 
         return nil
     }
+
+    public func clearTimestamps() async -> Bool {
+        guard let startUrl = URL(string: "\(baseUrl)/clear"),
+              let resultUrl = URL(string: "\(baseUrl)/clear/result") else {
+
+            return false
+        }
+
+        guard let (_, response) = try? await urlSession.data(from: startUrl) else {
+            return false
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            return false
+        }
+
+
+        for _ in 0..<5 {
+            do {
+                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            } catch {
+                return false
+            }
+
+            guard let (data, response) = try? await urlSession.data(from: resultUrl) else {
+                continue
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                continue
+            }
+
+            guard let string = String(data: data, encoding: .utf8) else {
+                continue
+            }
+
+            return string == "ok"
+        }
+
+        return false
+    }
 }
