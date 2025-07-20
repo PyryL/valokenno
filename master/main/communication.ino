@@ -1,4 +1,5 @@
 #include <WebServer.h>
+#include "esp_wifi.h"
 
 uint8_t slaveMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0x64, 0x0C};
 
@@ -50,6 +51,10 @@ void switchToApMode() {
     esp_now_deinit();
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+    delay(100);
+    esp_wifi_stop();
+    delay(100);
+    esp_wifi_start();
     delay(100);
     WiFi.mode(WIFI_AP);
     bool ap_success = WiFi.softAP("Valokenno", "pyrypyrypyry", 1);
@@ -155,17 +160,20 @@ void loop_communications() {
     timestamp_response.remove(timestamp_response.length() - 1);
     // motion_timestamps.clear();
 
-    timestamp_response += ";dev2,";
+    timestamp_response += ";dev2";
     String slave_timestamps_str = send_message("tim");
     Serial.println("Slave timestamps: " + slave_timestamps_str);
-    std::vector<String> slave_timestamps;
-    split(slave_timestamps_str, ",", &slave_timestamps);
-    for (String slave_timestamp_str : slave_timestamps) {
-      unsigned long slave_timestamp = strtoul(slave_timestamp_str.c_str(), NULL, 10);
-      unsigned long unshifted_timestamp = slave_timestamp - slave_clock_offset;
-      timestamp_response += String(unshifted_timestamp) + ",";
+    if (slave_timestamps_str != "NA") {
+      timestamp_response += ",";
+      std::vector<String> slave_timestamps;
+      split(slave_timestamps_str, ",", &slave_timestamps);
+      for (String slave_timestamp_str : slave_timestamps) {
+        unsigned long slave_timestamp = strtoul(slave_timestamp_str.c_str(), NULL, 10);
+        unsigned long unshifted_timestamp = slave_timestamp - slave_clock_offset;
+        timestamp_response += String(unshifted_timestamp) + ",";
+      }
+      timestamp_response.remove(timestamp_response.length() - 1);
     }
-    timestamp_response.remove(timestamp_response.length() - 1);
 
     switchToApMode();
     Serial.println("Timestamp response: " + timestamp_response);

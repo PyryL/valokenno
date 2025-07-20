@@ -8,6 +8,9 @@
 
 uint8_t masterMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0x5E, 0x08};
 
+char pending_request[256];
+volatile bool has_pending_request = false;
+
 std::vector<unsigned long> motion_timestamps = {};
 
 void blink(int count) {
@@ -24,6 +27,11 @@ void blink(int count) {
 }
 
 void send_response(String message) {
+  if (message.length() >= ESP_NOW_MAX_DATA_LEN) {
+    Serial.println("Tried to send too long response");
+    return;
+  }
+
   esp_err_t success = esp_now_send(masterMac, (uint8_t*)message.c_str(), message.length());
   if (success != ESP_OK) {
     Serial.println("Response sending failed: " + success);
@@ -31,22 +39,19 @@ void send_response(String message) {
 }
 
 void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len) {
-  String msg = "";
-  for (int i = 0; i < len; i++) {
-    msg += (char)data[i];
+  if (has_pending_request) {
+    Serial.println("Received request while previous was still unhandled");
+    return;
   }
 
-  String message_type = msg.substring(0, 3);
-
-  if (message_type == "pin") {
-    handle_ping_pong(msg);
-  } else if (message_type == "syn") {
-    handle_clock_sync();
-  } else if (message_type == "tim") {
-    handle_motion_timestamp_request();
-  } else {
-    Serial.println("Received unexpected message: " + msg);
+  if (len >= sizeof(pending_request)) {
+    Serial.println("Received too long request");
+    return;
   }
+
+  memcpy(pending_request, data, len);
+  pending_request[len] = '\0';
+  has_pending_request = true;
 }
 
 void handle_ping_pong(String message) {
@@ -70,7 +75,10 @@ void handle_motion_timestamp_request() {
   if (message.length() > 0) {
     message.remove(message.length() - 1);
   }
-  // motion_timestamps.clear();
+  if (message.length() == 0) {
+    message = "NA";
+  }
+  Serial.println("Sending this timestamp response: " + message);
   send_response(message);
 }
 
@@ -116,6 +124,27 @@ void setup() {
 }
 
 void loop() {
+  if (has_pending_request) {
+    String msg = String(pending_request);
+
+    String message_type = msg.substring(0, 3);
+
+    if (message_type == "pin") {
+      handle_ping_pong(msg);
+    } else if (message_type == "syn") {
+      handle_clock_sync();
+    } else if (message_type == "tim") {
+      handle_motion_timestamp_request();
+    } else {
+      Serial.println("Received unexpected message: " + msg);
+    }
+
+    pending_request[0] = '\0';
+    has_pending_request = false;
+  }
+
+
+
   loop_sensor();
   // delay(100);
 }
