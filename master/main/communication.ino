@@ -16,6 +16,9 @@ char esp_now_received_response[256];
 volatile bool pending_timestamp_process = false;
 String timestamp_response = "";
 
+volatile bool pending_clear_process = false;
+String clear_process_response = "";
+
 WebServer ap_server(80);
 
 
@@ -135,11 +138,28 @@ void handle_ap_status_request() {
   ap_server.send(200, "text/plain", "Valokenno toiminnassa");
 }
 
+void handle_ap_clear_request() {
+  Serial.println("Clear request received");
+  pending_clear_process = true;
+  ap_server.send(200, "text/plain", "Started");
+}
+
+void handle_ap_clear_result_request() {
+  if (clear_process_response.length() > 0) {
+    ap_server.send(200, "text/plain", clear_process_response);
+    clear_process_response = "";
+  } else {
+    ap_server.send(404, "text/plain", "Still processing");
+  }
+}
+
 
 void setup_communications() {
   ap_server.on("/status", HTTP_GET, handle_ap_status_request);
   ap_server.on("/timestamps", HTTP_GET, handle_ap_timestamp_request);
   ap_server.on("/timestamps/result", HTTP_GET, handle_ap_timestamp_result_request);
+  ap_server.on("/clear", HTTP_GET, handle_ap_clear_request);
+  ap_server.on("/clear/result", HTTP_GET, handle_ap_clear_result_request);
   ap_server.begin();
 
   // Serial.println("Access point IP: " + WiFi.softAPIP().toString());
@@ -158,7 +178,6 @@ void loop_communications() {
       timestamp_response += String(timestamp) + ",";
     }
     timestamp_response.remove(timestamp_response.length() - 1);
-    // motion_timestamps.clear();
 
     timestamp_response += ";dev2";
     String slave_timestamps_str = send_message("tim");
@@ -178,6 +197,22 @@ void loop_communications() {
     switchToApMode();
     Serial.println("Timestamp response: " + timestamp_response);
     pending_timestamp_process = false;
+  }
+
+  if (pending_clear_process) {
+    switchToEspNow();
+
+    String slave_response = send_message("cle");
+    if (slave_response != "cld") {
+      clear_process_response = "failed";
+    } else {
+      motion_timestamps.clear();
+      clear_process_response = "ok";
+    }
+
+    switchToApMode();
+    Serial.println("Clear process response: " + clear_process_response);
+    pending_clear_process = false;
   }
 }
 

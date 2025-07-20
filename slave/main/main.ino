@@ -94,8 +94,13 @@ void handle_motion_timestamp_request() {
   if (message.length() == 0) {
     message = "NA";
   }
-  Serial.println("Sending this timestamp response: " + message);
   send_response(message);
+}
+
+void handle_clear_request() {
+  Serial.println("Clearing timestamps");
+  motion_timestamps.clear();
+  send_response("cld");
 }
 
 void setup_wifi() {
@@ -149,6 +154,8 @@ void loop() {
       handle_ping_pong(msg);
     } else if (message_type == "tim") {
       handle_motion_timestamp_request();
+    } else if (message_type == "cle") {
+      handle_clear_request();
     } else {
       Serial.println("Received unexpected message: " + msg);
     }
