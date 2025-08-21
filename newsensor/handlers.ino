@@ -8,20 +8,20 @@ void setup_sensor() {
 /*
 Reads the latest distance information from the sensor and returns it in centrimeters.
 -1 is returned in case of an error.
+Timestamp is only valid if the returned distance is valid.
 */
-int measure(int& clear_info) {
+int measure(unsigned long int& timestamp) {
     // clear serial buffer to ensure latest data is used
     int cleared = 0;
     while (serial.available() && cleared < 512) {
         serial.read();
         cleared++;
     }
-    clear_info = cleared;
 
     // read the next frame
     uint8_t frame[9];
     int pos = 0;
-    unsigned long start_time = millis();
+    unsigned long int start_time = millis();
 
     while (pos < 9 && millis() - start_time < 100) {
         if (!serial.available()) continue;
@@ -32,6 +32,7 @@ int measure(int& clear_info) {
             if (pos == 0 && byte == 0x59) {
                 frame[0] = byte;
                 pos = 1;
+                timestamp = millis();
             } else if (pos == 1 && byte == 0x59) {
                 frame[1] = byte;
                 pos = 2;
