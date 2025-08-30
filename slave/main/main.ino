@@ -139,7 +139,9 @@ void setup() {
 
   setup_wifi();
 
-  setup_sensor();
+  if (!setup_sensor()) {
+    Serial.println("Sensor setup failed");
+  }
 
   blink(1);
 }
