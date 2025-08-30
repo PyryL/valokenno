@@ -109,7 +109,9 @@ void setup() {
 
   setup_communications();
 
-  setup_sensor();
+  if (!setup_sensor()) {
+    Serial.println("Sensor setup failed");
+  }
 
   Serial.println("Setup completed");
 }

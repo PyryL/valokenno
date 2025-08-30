@@ -15,9 +15,22 @@ void set_led(bool is_on) {
 
 
 
-void setup_sensor() {
+bool setup_sensor() {
   serial.begin(115200, SERIAL_8N1, 14, 15);
-  is_sensor_set_up_successfully = true;
+
+  delay(100);
+
+  // try to get a valid reading with 10 retries
+  for (int i=0; i<10; i++) {
+    unsigned long int timestamp;
+    int distance = measure(timestamp);
+    if (distance > 0) {
+      is_sensor_set_up_successfully = true;
+      break;
+    }
+  }
+
+  return is_sensor_set_up_successfully;
 }
 
 
