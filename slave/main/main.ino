@@ -1,12 +1,13 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include <vector>
+#include <Adafruit_NeoPixel.h>
 
 // SLAVE
 
-#define LED_PIN 4 // led
+Adafruit_NeoPixel pixel(1, PIN_NEOPIXEL);
 
-uint8_t masterMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0x5E, 0x08};
+uint8_t masterMac[] = {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0x08};
 
 char pending_request[256];
 volatile bool has_pending_request = false;
@@ -15,9 +16,14 @@ std::vector<unsigned long> motion_timestamps = {};
 
 void blink(int count) {
   for (int i=0; i<count; i++) {
-    digitalWrite(LED_PIN, HIGH);
+    pixel.setPixelColor(0, 255, 153, 0); // orange
+    pixel.show();
+
     delay(100);
-    digitalWrite(LED_PIN, LOW);
+
+    pixel.setPixelColor(0, 0, 0, 0);
+    pixel.show();
+
     if (i < count-1) {
       delay(100);
     } else {
@@ -133,8 +139,15 @@ void setup_wifi() {
 }
 
 void setup() {
-  pinMode(LED_PIN, OUTPUT);
+  pixel.begin();
+  pixel.setBrightness(255);
+
+  blink(1);
+
   Serial.begin(115200);
+  while (!Serial.availableForWrite()) {
+    delay(10);
+  }
   Serial.println("Valokenno-IoT Slave node");
 
   setup_wifi();

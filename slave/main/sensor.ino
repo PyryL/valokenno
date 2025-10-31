@@ -10,13 +10,18 @@ bool did_detect_motion_last_time = false;
 
 
 void set_led(bool is_on) {
-  digitalWrite(LED_PIN, is_on ? HIGH : LOW);
+  if (is_on) {
+    pixel.setPixelColor(0, 255, 255, 255);
+  } else {
+    pixel.setPixelColor(0, 0, 0, 0);
+  }
+  pixel.show();
 }
 
 
 
 bool setup_sensor() {
-  serial.begin(115200, SERIAL_8N1, 14, 15);
+  serial.begin(115200);
 
   delay(100);
 

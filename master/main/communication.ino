@@ -1,7 +1,7 @@
 #include <WebServer.h>
 #include "esp_wifi.h"
 
-uint8_t slaveMac[] = {0xC8, 0xF0, 0x9E, 0x4D, 0x64, 0x0C};
+uint8_t slaveMac[] = {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0xA4};
 
 enum RadioMode {
   ESP_NOW_MODE,
@@ -28,6 +28,12 @@ void switchToEspNow() {
     delay(100);
 
     WiFi.mode(WIFI_STA);
+
+    // while (WiFi.macAddress() == "00:00:00:00:00:00") {
+    //   delay(100);
+    // }
+    // Serial.println("MAC address: " + WiFi.macAddress());
+
     esp_err_t esp_now_success = esp_now_init();
 
     esp_now_register_recv_cb(espNowReceived);

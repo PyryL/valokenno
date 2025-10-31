@@ -1,10 +1,11 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include <vector>
+#include <Adafruit_NeoPixel.h>
 
 // MASTER
 
-#define LED_PIN 4 // led
+Adafruit_NeoPixel pixel(1, PIN_NEOPIXEL);
 
 unsigned long slave_clock_offset;
 
@@ -27,9 +28,14 @@ bool send_ping_pong() {
 
 void blink(int count) {
   for (int i=0; i<count; i++) {
-    digitalWrite(LED_PIN, HIGH);
+    pixel.setPixelColor(0, 255, 153, 0); // orange
+    pixel.show();
+
     delay(100);
-    digitalWrite(LED_PIN, LOW);
+
+    pixel.setPixelColor(0, 0, 0, 0);
+    pixel.show();
+
     if (i < count-1) {
       delay(100);
     } else {
@@ -96,11 +102,16 @@ bool sync_clocks() {
 
 
 void setup() {
-  pinMode(LED_PIN, OUTPUT);
-  Serial.begin(115200);
-  Serial.println("Valokenno-IoT Master node");
+  pixel.begin();
+  pixel.setBrightness(255);
 
   blink(1);
+
+  Serial.begin(115200);
+  while (!Serial.availableForWrite()) {
+    delay(10);
+  }
+  Serial.println("Valokenno-IoT Master node");
 
   switchToEspNow();
   send_ping_pong();
@@ -113,6 +124,7 @@ void setup() {
     Serial.println("Sensor setup failed");
   }
 
+  blink(1);
   Serial.println("Setup completed");
 }
 
