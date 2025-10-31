@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     let manager = ConnectionManager()
-    @State var connectionLabel: String = "N/A"
+    @State var connectionStatus: ConnectionStatus = .none
     @State var timestamps: ([UInt32], [UInt32])? = nil
     @State var selectedTimestampDevice1: UInt32? = nil
     @State var selectedTimestampDevice2: UInt32? = nil
@@ -17,11 +17,29 @@ struct ContentView: View {
     @State var isLoadingTimestamps: Bool = false
     @State var isClearingTimestamps: Bool = false
 
+    private var connectionStatusLabel: some View {
+        Group {
+            if connectionStatus == .none {
+                Image(systemName: "questionmark")
+                    .foregroundStyle(.primary)
+            } else if connectionStatus == .connecting {
+                ProgressView()
+                    .progressViewStyle(.circular)
+            } else if connectionStatus == .connected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else if connectionStatus == .notConnected {
+                Image(systemName: "xmark")
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
     private func checkConnection() {
-        connectionLabel = "Checking..."
+        connectionStatus = .connecting
         Task {
             let isConnected = await manager.checkConnection()
-            connectionLabel = isConnected ? "Connected" : "Not connected"
+            connectionStatus = isConnected ? .connected : .notConnected
         }
     }
 
@@ -94,7 +112,7 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Text(connectionLabel)
+                    connectionStatusLabel
                         .onTapGesture {
                             checkConnection()
                         }
@@ -124,6 +142,10 @@ struct ContentView: View {
         .onAppear {
             checkConnection()
         }
+    }
+
+    enum ConnectionStatus {
+        case none, connecting, connected, notConnected
     }
 }
 
