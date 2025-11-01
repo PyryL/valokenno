@@ -26,12 +26,16 @@ bool send_ping_pong() {
 
 
 
-void blink(int count) {
+void blink(int count, bool is_error) {
   for (int i=0; i<count; i++) {
-    pixel.setPixelColor(0, 255, 153, 0); // orange
+    if (is_error) {
+      pixel.setPixelColor(0, 255, 0, 0); // red
+    } else {
+      pixel.setPixelColor(0, 255, 153, 0); // orange
+    }
     pixel.show();
 
-    delay(100);
+    delay(200);
 
     pixel.setPixelColor(0, 0, 0, 0);
     pixel.show();
@@ -105,26 +109,51 @@ void setup() {
   pixel.begin();
   pixel.setBrightness(255);
 
-  blink(1);
+  blink(1, false);
 
   Serial.begin(115200);
-  while (!Serial.availableForWrite()) {
+  unsigned long serial_init_time = millis();
+  while (!Serial.availableForWrite() && (millis() - serial_init_time) < 1000) {
     delay(10);
+  }
+  if (!Serial.availableForWrite()) {
+    blink(10, true);
+    delay(1000);
   }
   Serial.println("Valokenno-IoT Master node");
 
-  switchToEspNow();
-  send_ping_pong();
-  sync_clocks();
-  switchToApMode();
+  while (true) {
+    switchToEspNow();
+
+    if (!send_ping_pong()) { // TODO: this hangs because with no response the function never returns
+      blink(2, true);
+      delay(1000);
+      continue;
+    }
+
+    if (!sync_clocks()) {
+      blink(4, true);
+      delay(1000);
+      continue;
+    }
+
+    switchToApMode();
+    break;
+  }
 
   setup_communications();
 
-  if (!setup_sensor()) {
-    Serial.println("Sensor setup failed");
+  while (true) {
+    if (!setup_sensor()) {
+      Serial.println("Sensor setup failed");
+      blink(6, true);
+      delay(1000);
+      continue;
+    }
+    break;
   }
 
-  blink(1);
+  blink(1, false);
   Serial.println("Setup completed");
 }
 
