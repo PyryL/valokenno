@@ -9,7 +9,7 @@ Adafruit_NeoPixel pixel(1, PIN_NEOPIXEL);
 
 uint8_t masterMac[] = {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0x08};
 
-char pending_request[256];
+uint8_t pending_request[256];
 volatile bool has_pending_request = false;
 
 std::vector<unsigned long> motion_timestamps = {};
@@ -32,22 +32,27 @@ void blink(int count) {
   }
 }
 
-void send_response(String message) {
-  if (message.length() >= ESP_NOW_MAX_DATA_LEN) {
+void send_response(uint8_t *response, int response_len) {
+  if (response_len >= ESP_NOW_MAX_DATA_LEN) {
     Serial.println("Tried to send too long response");
     return;
   }
 
-  esp_err_t success = esp_now_send(masterMac, (uint8_t*)message.c_str(), message.length());
+  esp_err_t success = esp_now_send(masterMac, response, response_len);
   if (success != ESP_OK) {
     Serial.println("Response sending failed: " + success);
   }
 }
 
 void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len) {
+  if (len < 7) {
+    // invalid request
+    return;
+  }
+
   // handle clock sync immediately in the interruption to minimize latency
-  if (len == 3 && data[0] == 's' && data[1] == 'y' && data[2] == 'n') {
-    handle_clock_sync();
+  if (data[4] == 's' && data[5] == 'y' && data[6] == 'n') {
+    handle_clock_sync(data);
     return;
   }
 
@@ -56,33 +61,46 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
     return;
   }
 
-  if (len >= sizeof(pending_request)) {
+  if (len > sizeof(pending_request)) {
     Serial.println("Received too long request");
     return;
   }
 
   memcpy(pending_request, data, len);
-  pending_request[len] = '\0';
   has_pending_request = true;
 }
 
-void handle_ping_pong(String message) {
-  Serial.println("Received ping-pong " + message);
-  String random_payload = message.substring(3, 11);
-  send_response("pon" + random_payload);
+void handle_ping_pong() {
+  Serial.println("Received ping-pong");
+
+  uint8_t response[12];
+  memcpy(response, pending_request, 4); // request id
+
+  // reverse the payload for response
+  for (int i=0; i<8; i++) {
+    response[i+4] = pending_request[14-i];
+  }
+
+  send_response(response, 12);
 }
 
-void handle_clock_sync() {
+void int32_to_bytes(uint32_t value, uint8_t destination[4]) {
+  destination[0] = (value >> 24) & 0xFF; // most sig
+  destination[1] = (value >> 16) & 0xFF;
+  destination[2] = (value >> 8) & 0xFF;
+  destination[3] = value & 0xFF;
+}
+
+void handle_clock_sync(const uint8_t *request) {
   // Serial.println("Received clock sync");
-  char response[14];
-  response[0] = 's';
-  response[1] = 'y';
-  response[2] = 'r';
+
+  uint8_t response[8];
+  memcpy(response, request, 4); // request id
 
   unsigned long current_time = millis();
-  sprintf(&response[3], "%010lu", current_time);
+  int32_to_bytes((uint32_t)current_time, response + 4);
 
-  esp_err_t success = esp_now_send(masterMac, (uint8_t*)response, 13);
+  esp_err_t success = esp_now_send(masterMac, response, 8);
   if (success != ESP_OK) {
     Serial.println("Sync response sending failed: " + String(success));
   }
@@ -90,23 +108,36 @@ void handle_clock_sync() {
 
 void handle_motion_timestamp_request() {
   Serial.println("Received motion timestamps request");
-  String message = "";
-  for (unsigned long timestamp : motion_timestamps) {
-    message += String(timestamp) + ",";
+
+  int response_len = 4 + 4 * motion_timestamps.size();
+  uint8_t response[response_len];
+
+  memcpy(response, pending_request, 4); // request id
+
+  for (int i=0; i<motion_timestamps.size(); i++) {
+    int32_to_bytes((uint32_t)motion_timestamps[i], response + (4 + 4 * i));
   }
-  if (message.length() > 0) {
-    message.remove(message.length() - 1);
+
+  Serial.print("Motion timestamp response bytes: ");
+  for (int i=0; i<response_len; i++) {
+    Serial.printf("%02X ", response[i]);
   }
-  if (message.length() == 0) {
-    message = "NA";
-  }
-  send_response(message);
+  Serial.println();
+
+  send_response(response, response_len);
 }
 
 void handle_clear_request() {
   Serial.println("Clearing timestamps");
+
   motion_timestamps.clear();
-  send_response("cld");
+
+  uint8_t response[6];
+  memcpy(response, pending_request, 4); // request id
+  response[4] = 'o';
+  response[5] = 'k';
+
+  send_response(response, 6);
 }
 
 void setup_wifi() {
@@ -161,21 +192,16 @@ void setup() {
 
 void loop() {
   if (has_pending_request) {
-    String msg = String(pending_request);
-
-    String message_type = msg.substring(0, 3);
-
-    if (message_type == "pin") {
-      handle_ping_pong(msg);
-    } else if (message_type == "tim") {
+    if (memcmp(pending_request + 4, "pin", 3) == 0) {
+      handle_ping_pong();
+    } else if (memcmp(pending_request + 4, "tim", 3) == 0) {
       handle_motion_timestamp_request();
-    } else if (message_type == "cle") {
+    } else if (memcmp(pending_request + 4, "cle", 3) == 0) {
       handle_clear_request();
     } else {
-      Serial.println("Received unexpected message: " + msg);
+      Serial.println("Received unexpected message");
     }
 
-    pending_request[0] = '\0';
     has_pending_request = false;
   }
 
