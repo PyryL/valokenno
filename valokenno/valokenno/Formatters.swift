@@ -8,7 +8,7 @@
 import Foundation
 
 class Formatters {
-    public static func formatTimestamp(_ timestamp: UInt32, digits: Int = 4) -> String {
+    public static func formatTimestamp(_ timestamp: UInt32, digits: Int = 3) -> String {
         let formatter = NumberFormatter()
         formatter.minimumFractionDigits = digits
         formatter.maximumFractionDigits = digits
