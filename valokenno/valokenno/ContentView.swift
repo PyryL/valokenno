@@ -9,19 +9,39 @@ import SwiftUI
 
 struct ContentView: View {
     let manager = ConnectionManager()
-    @State var connectionLabel: String = "N/A"
+    @State var connectionStatus: ConnectionStatus = .none
     @State var timestamps: ([UInt32], [UInt32])? = nil
     @State var selectedTimestampDevice1: UInt32? = nil
     @State var selectedTimestampDevice2: UInt32? = nil
 
+    @State var isClearConfirmAlertVisible: Bool = false
+
     @State var isLoadingTimestamps: Bool = false
     @State var isClearingTimestamps: Bool = false
 
+    private var connectionStatusLabel: some View {
+        Group {
+            if connectionStatus == .none {
+                Image(systemName: "questionmark")
+                    .foregroundStyle(.primary)
+            } else if connectionStatus == .connecting {
+                ProgressView()
+                    .progressViewStyle(.circular)
+            } else if connectionStatus == .connected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else if connectionStatus == .notConnected {
+                Image(systemName: "xmark")
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
     private func checkConnection() {
-        connectionLabel = "Checking..."
+        connectionStatus = .connecting
         Task {
             let isConnected = await manager.checkConnection()
-            connectionLabel = isConnected ? "Connected" : "Not connected"
+            connectionStatus = isConnected ? .connected : .notConnected
         }
     }
 
@@ -40,6 +60,15 @@ struct ContentView: View {
                 timestamps = try? TimestampParser.parse(responseString)
             }
             isLoadingTimestamps = false
+
+            if let timestamps {
+                if timestamps.0.count == 1 {
+                    selectedTimestampDevice1 = timestamps.0.first!
+                }
+                if timestamps.1.count == 1 {
+                    selectedTimestampDevice2 = timestamps.1.first!
+                }
+            }
         }
     }
 
@@ -94,13 +123,15 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Text(connectionLabel)
+                    connectionStatusLabel
                         .onTapGesture {
                             checkConnection()
                         }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: clearTimestamps) {
+                    Button {
+                        isClearConfirmAlertVisible = true
+                    } label: {
                         if isClearingTimestamps {
                             ProgressView()
                                 .progressViewStyle(.circular)
@@ -120,10 +151,24 @@ struct ContentView: View {
                     }
                 }
             }
+            .alert("Clear timestamps?", isPresented: $isClearConfirmAlertVisible) {
+                Button(role: .cancel, action: {}) {
+                    Text("Cancel")
+                }
+                Button(role: .destructive) {
+                    clearTimestamps()
+                } label: {
+                    Text("Clear")
+                }
+            }
         }
         .onAppear {
             checkConnection()
         }
+    }
+
+    enum ConnectionStatus {
+        case none, connecting, connected, notConnected
     }
 }
 
@@ -136,15 +181,23 @@ struct TimestampList: View {
             Text("No timestamps")
         } else {
             ForEach(timestamps, id: \.self) { timestamp in
-                HStack {
-                    Image(systemName: "checkmark")
-                        .opacity(timestamp == selectedTimestamp ? 1 : 0)
-                    Text("\(Formatters.formatTimestamp(timestamp))")
-                        .monospaced()
-                }
-                .onTapGesture {
+                Button {
                     selectedTimestamp = timestamp
+                } label: {
+                    ZStack(alignment: .leading) {
+                        Color.white
+                            .opacity(0.000001)
+
+                        HStack {
+                            Image(systemName: "checkmark")
+                                .opacity(timestamp == selectedTimestamp ? 1 : 0)
+
+                            Text("\(Formatters.formatTimestamp(timestamp))")
+                                .monospaced()
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
             }
         }
     }
