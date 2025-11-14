@@ -108,7 +108,7 @@ void loop_sensor() {
 
   unsigned long int timestamp;
   int distance_reading = measure(timestamp);
-  Serial.printf("Distance: %3d\n", distance_reading);
+  // Serial.printf("Distance: %3d\n", distance_reading);
 
   if (distance_reading < 0) {
     // error reading the sensor

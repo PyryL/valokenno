@@ -142,7 +142,7 @@ void setup() {
   while (true) {
     switchToEspNow();
 
-    if (!send_ping_pong()) { // TODO: this hangs because with no response the function never returns
+    if (!send_ping_pong()) {
       blink(2, true);
       delay(1000);
       continue;
