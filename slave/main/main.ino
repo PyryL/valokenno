@@ -12,6 +12,7 @@ uint8_t masterMac[] = {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0x08};
 bool fatal_setup_error = false;
 
 uint8_t pending_request[256];
+int pending_request_len;
 volatile bool has_pending_request = false;
 
 std::vector<unsigned long> motion_timestamps = {};
@@ -76,11 +77,17 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
   }
 
   memcpy(pending_request, data, len);
+  pending_request_len = len;
   has_pending_request = true;
 }
 
 void handle_ping_pong() {
   Serial.println("Received ping-pong");
+
+  if (pending_request_len != 15) {
+    Serial.println("Invalid ping-pong request");
+    return;
+  }
 
   uint8_t response[12];
   memcpy(response, pending_request, 4); // request id
