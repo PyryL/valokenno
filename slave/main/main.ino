@@ -119,7 +119,12 @@ void handle_motion_timestamp_request() {
   Serial.println("Received motion timestamps request");
 
   int response_len = 4 + 4 * motion_timestamps.size();
-  uint8_t response[response_len];
+  uint8_t response[256];
+
+  if (response_len > 256) {
+    Serial.println("Too many timestamps to send");
+    return;
+  }
 
   memcpy(response, pending_request, 4); // request id
 

@@ -155,15 +155,16 @@ int send_message(uint8_t message_type[3], uint8_t *request_payload, int request_
   int32_to_bytes(esp_now_waiting_response_id, request_id_bytes);
 
   int request_length = 4 + 3 + request_payload_len;
-  uint8_t request[request_length];
-  memcpy(request, request_id_bytes, 4);
-  memcpy(request + 4, message_type, 3);
-  memcpy(request + 4 + 3, request_payload, request_payload_len);
+  uint8_t request[256];
 
   if (request_length > 256 || request_length > ESP_NOW_MAX_DATA_LEN) {
     Serial.println("Tried to send too long request");
     return -1;
   }
+
+  memcpy(request, request_id_bytes, 4);
+  memcpy(request + 4, message_type, 3);
+  memcpy(request + 4 + 3, request_payload, request_payload_len);
 
   esp_now_waiting_response = true;
 
