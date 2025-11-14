@@ -100,7 +100,10 @@ void espNowReceived(const esp_now_recv_info* info, const unsigned char* data, in
     return;
   }
 
-  // TODO: check that len <= 256
+  if (len > 256) {
+    Serial.println("Received too long response");
+    return;
+  }
 
   int payload_len = len - 4;
   memcpy(esp_now_received_response, data + 4, payload_len);
@@ -156,6 +159,11 @@ int send_message(uint8_t message_type[3], uint8_t *request_payload, int request_
   memcpy(request, request_id_bytes, 4);
   memcpy(request + 4, message_type, 3);
   memcpy(request + 4 + 3, request_payload, request_payload_len);
+
+  if (request_length > 256 || request_length > ESP_NOW_MAX_DATA_LEN) {
+    Serial.println("Tried to send too long request");
+    return -1;
+  }
 
   esp_now_waiting_response = true;
 

@@ -39,7 +39,9 @@ void blink(int count, bool is_error) {
 }
 
 void send_response(uint8_t *response, int response_len) {
-  if (response_len >= ESP_NOW_MAX_DATA_LEN) {
+  const int MAX_RESPONSE_LEN = (256 < ESP_NOW_MAX_DATA_LEN) ? 256 : ESP_NOW_MAX_DATA_LEN;
+
+  if (response_len > MAX_RESPONSE_LEN) {
     Serial.println("Tried to send too long response");
     return;
   }
