@@ -14,6 +14,8 @@ struct ContentView: View {
     @State var selectedTimestampDevice1: UInt32? = nil
     @State var selectedTimestampDevice2: UInt32? = nil
 
+    @State var isClearConfirmAlertVisible: Bool = false
+
     @State var isLoadingTimestamps: Bool = false
     @State var isClearingTimestamps: Bool = false
 
@@ -118,7 +120,9 @@ struct ContentView: View {
                         }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: clearTimestamps) {
+                    Button {
+                        isClearConfirmAlertVisible = true
+                    } label: {
                         if isClearingTimestamps {
                             ProgressView()
                                 .progressViewStyle(.circular)
@@ -136,6 +140,16 @@ struct ContentView: View {
                             Image(systemName: "arrow.down.circle")
                         }
                     }
+                }
+            }
+            .alert("Clear timestamps?", isPresented: $isClearConfirmAlertVisible) {
+                Button(role: .cancel, action: {}) {
+                    Text("Cancel")
+                }
+                Button(role: .destructive) {
+                    clearTimestamps()
+                } label: {
+                    Text("Clear")
                 }
             }
         }
