@@ -10,8 +10,10 @@ enum RadioMode {
 
 RadioMode current_radio_mode = AP_MODE;
 
+uint32_t esp_now_waiting_response_id = 0;
 volatile bool esp_now_waiting_response = false;
-char esp_now_received_response[256];
+uint8_t esp_now_received_response[256];
+volatile int esp_now_received_response_len;
 
 volatile bool pending_timestamp_process = false;
 String timestamp_response = "";
@@ -76,37 +78,118 @@ void switchToApMode() {
 
 void espNowReceived(const esp_now_recv_info* info, const unsigned char* data, int len) {
   if (!esp_now_waiting_response) {
-    Serial.println("ESP-NOW received unexpected response");
     return;
   }
 
-  if (current_radio_mode != ESP_NOW_MODE) {
-    Serial.println("ESP-NOW received response while in another mode");
+  // if (current_radio_mode != ESP_NOW_MODE) {
+  //   Serial.println("ESP-NOW received response while in another mode");
+  //   return;
+  // }
+
+  if (len < 4) {
+    // invalid response
     return;
   }
 
-  memcpy(esp_now_received_response, data, len);
-  esp_now_received_response[len] = '\0';
+  uint8_t request_id_bytes[4];
+  memcpy(request_id_bytes, data, 4);
+  uint32_t request_id = bytes_to_int32(request_id_bytes);
+
+  if (request_id != esp_now_waiting_response_id) {
+    // received outdated response
+    return;
+  }
+
+  if (len > 256) {
+    Serial.println("Received too long response");
+    return;
+  }
+
+  int payload_len = len - 4;
+  memcpy(esp_now_received_response, data + 4, payload_len);
+  esp_now_received_response_len = payload_len;
   esp_now_waiting_response = false;
 }
 
-String send_message(String message) {
+/*
+Copies the given integer into 4-byte big endian byte array.
+*/
+void int32_to_bytes(uint32_t value, uint8_t destination[4]) {
+  destination[0] = (value >> 24) & 0xFF; // most sig
+  destination[1] = (value >> 16) & 0xFF;
+  destination[2] = (value >> 8) & 0xFF;
+  destination[3] = value & 0xFF;
+}
+
+/*
+Exactly 4 first bytes of the buffer are used.
+*/
+uint32_t bytes_to_int32(uint8_t bytes[4]) {
+  return ((uint32_t)bytes[0] << 24) |
+         ((uint32_t)bytes[1] << 16) |
+         ((uint32_t)bytes[2] << 8) |
+         ((uint32_t)bytes[3]);
+}
+
+/*
+Response payload buffer must be 256 bytes long.
+Returns the response payload length, or `-1` on error.
+*/
+int send_message(uint8_t message_type[3], uint8_t *request_payload, int request_payload_len, uint8_t *response_payload) {
   if (current_radio_mode != ESP_NOW_MODE) {
     Serial.println("Tried sending in wrong mode");
-    return "";
+    return -1;
   }
+
+  if (esp_now_waiting_response) {
+    return -1;
+  }
+
+  // request:
+  // * request id, 4 bytes
+  // * msg type, 3 bytes
+  // * payload, rest of the bytes
+
+  esp_now_waiting_response_id++;
+  uint8_t request_id_bytes[4];
+  int32_to_bytes(esp_now_waiting_response_id, request_id_bytes);
+
+  int request_length = 4 + 3 + request_payload_len;
+  uint8_t request[256];
+
+  if (request_length > 256 || request_length > ESP_NOW_MAX_DATA_LEN) {
+    Serial.println("Tried to send too long request");
+    return -1;
+  }
+
+  memcpy(request, request_id_bytes, 4);
+  memcpy(request + 4, message_type, 3);
+  memcpy(request + 4 + 3, request_payload, request_payload_len);
 
   esp_now_waiting_response = true;
-  esp_err_t send_success = esp_now_send(slaveMac, (uint8_t*)message.c_str(), message.length());
 
-  while (esp_now_waiting_response) {
-    delay(1);
+  esp_err_t send_success = esp_now_send(slaveMac, request, request_length);
+  if (send_success != ESP_OK) {
+    esp_now_waiting_response = false;
+    return -1;
   }
 
-  String response = String(esp_now_received_response);
-  esp_now_received_response[0] = '\0';
 
-  return response;
+  // response:
+  // * request id, 4 bytes
+  // * payload, rest of the bytes
+
+  unsigned long message_sent_time = millis();
+  while (esp_now_waiting_response && (millis() - message_sent_time) < 3000) {
+    delay(1);
+  }
+  if (esp_now_waiting_response) {
+    esp_now_waiting_response = false;
+    return -1; // timeout
+  }
+
+  memcpy(response_payload, esp_now_received_response, esp_now_received_response_len);
+  return esp_now_received_response_len;
 }
 
 
@@ -185,16 +268,18 @@ void loop_communications() {
     }
     timestamp_response.remove(timestamp_response.length() - 1);
 
-    timestamp_response += ";dev2";
-    String slave_timestamps_str = send_message("tim");
-    Serial.println("Slave timestamps: " + slave_timestamps_str);
-    if (slave_timestamps_str != "NA") {
-      timestamp_response += ",";
-      std::vector<String> slave_timestamps;
-      split(slave_timestamps_str, ",", &slave_timestamps);
-      for (String slave_timestamp_str : slave_timestamps) {
-        unsigned long slave_timestamp = strtoul(slave_timestamp_str.c_str(), NULL, 10);
-        unsigned long unshifted_timestamp = slave_timestamp - slave_clock_offset;
+    uint8_t message_type[3] = {'t', 'i', 'm'};
+    uint8_t slave_response[256];
+    int slave_response_len = send_message(message_type, nullptr, 0, slave_response);
+
+    if (slave_response_len < 0 || slave_response_len % 4 != 0) {
+      Serial.println("Slave timestamp response failed");
+    } else {
+      timestamp_response += ";dev2,";
+      int timestamp_count = slave_response_len / 4;
+      for (int i=0; i<timestamp_count; i++) {
+        unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
+        unsigned long unshifted_timestamp = (unsigned long)((long)slave_timestamp - slave_clock_offset);
         timestamp_response += String(unshifted_timestamp) + ",";
       }
       timestamp_response.remove(timestamp_response.length() - 1);
@@ -208,12 +293,15 @@ void loop_communications() {
   if (pending_clear_process) {
     switchToEspNow();
 
-    String slave_response = send_message("cle");
-    if (slave_response != "cld") {
-      clear_process_response = "failed";
-    } else {
+    uint8_t message_type[3] = {'c', 'l', 'e'};
+    uint8_t slave_response[256];
+    int slave_response_len = send_message(message_type, nullptr, 0, slave_response);
+
+    if (slave_response_len == 2 && slave_response[0] == 'o' && slave_response[1] == 'k') {
       motion_timestamps.clear();
       clear_process_response = "ok";
+    } else {
+      clear_process_response = "failed";
     }
 
     switchToApMode();

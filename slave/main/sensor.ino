@@ -18,6 +18,11 @@ void set_led(bool is_on) {
   pixel.show();
 }
 
+void set_led_error() {
+  pixel.setPixelColor(0, 255, 0, 0);
+  pixel.show();
+}
+
 
 
 bool setup_sensor() {
@@ -105,9 +110,14 @@ void loop_sensor() {
 
   unsigned long int timestamp;
   int distance_reading = measure(timestamp);
-  Serial.printf("Distance: %3d\n", distance_reading);
+  // Serial.printf("Distance: %3d\n", distance_reading);
 
-  if (distance_reading > 0 && distance_reading <= MOTION_DETECTION_MAX_THRESHOLD) {
+  if (distance_reading < 0) {
+    // error reading the sensor
+    set_led_error();
+    did_detect_motion_last_time = false;
+
+  } else if (distance_reading <= MOTION_DETECTION_MAX_THRESHOLD) {
     if (!did_detect_motion_last_time) {
       motion_timestamps.push_back(timestamp);
       did_detect_motion_last_time = true;
