@@ -9,17 +9,23 @@ Adafruit_NeoPixel pixel(1, PIN_NEOPIXEL);
 
 uint8_t masterMac[] = {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0x08};
 
+bool fatal_setup_error = false;
+
 uint8_t pending_request[256];
 volatile bool has_pending_request = false;
 
 std::vector<unsigned long> motion_timestamps = {};
 
-void blink(int count) {
+void blink(int count, bool is_error) {
   for (int i=0; i<count; i++) {
-    pixel.setPixelColor(0, 255, 153, 0); // orange
+    if (is_error) {
+      pixel.setPixelColor(0, 255, 0, 0); // red
+    } else {
+      pixel.setPixelColor(0, 255, 153, 0); // orange
+    }
     pixel.show();
 
-    delay(100);
+    delay(200);
 
     pixel.setPixelColor(0, 0, 0, 0);
     pixel.show();
@@ -56,6 +62,7 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
     return;
   }
 
+  // TODO: should the new incoming request replace the existing unhandled one?
   if (has_pending_request) {
     Serial.println("Received request while previous was still unhandled");
     return;
@@ -140,7 +147,7 @@ void handle_clear_request() {
   send_response(response, 6);
 }
 
-void setup_wifi() {
+bool setup_wifi() {
   WiFi.mode(WIFI_STA);
 
   // Serial.print("Waiting mac address...");
@@ -152,10 +159,13 @@ void setup_wifi() {
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed");
-    return;
+    return false;
   }
 
-  esp_now_register_recv_cb(onReceive);
+  if (esp_now_register_recv_cb(onReceive) != ESP_OK) {
+    Serial.println("ESP-NOW callback function register failed");
+    return false;
+  }
 
   esp_now_peer_info_t peer;
   memset(&peer, 0, sizeof(peer));
@@ -163,34 +173,58 @@ void setup_wifi() {
   peer.channel = 0;
   peer.encrypt = false;
   peer.ifidx = WIFI_IF_STA;
+
   esp_err_t result = esp_now_add_peer(&peer);
   if (result != ESP_OK) {
-    Serial.printf("Masterin lisäys epäonnistui: %d\n", result);
+    Serial.printf("ESP-NOW peer adding failed: %d\n", result);
+    return false;
   }
+
+  return true;
 }
 
 void setup() {
   pixel.begin();
   pixel.setBrightness(255);
 
-  blink(1);
+  blink(1, false);
 
   Serial.begin(115200);
-  while (!Serial.availableForWrite()) {
-    delay(10);
-  }
+  #if ARDUINO_USB_CDC_ON_BOOT
+    unsigned long serial_init_time = millis();
+    while (!Serial && (millis() - serial_init_time) < 1000) {
+      delay(10);
+    }
+  #endif
   Serial.println("Valokenno-IoT Slave node");
 
-  setup_wifi();
-
-  if (!setup_sensor()) {
-    Serial.println("Sensor setup failed");
+  if (!setup_wifi()) {
+    fatal_setup_error = true;
+    return;
   }
 
-  blink(1);
+  while (true) {
+    if (!setup_sensor()) {
+      Serial.println("Sensor setup failed");
+      blink(6, true);
+      delay(1000);
+      continue;
+    }
+    break;
+  }
+
+  blink(1, false);
+  Serial.println("Setup completed");
 }
 
 void loop() {
+  if (fatal_setup_error) {
+    pixel.setPixelColor(0, 255, 0, 0); // red
+    pixel.show();
+    delay(1000);
+    return;
+  }
+
   if (has_pending_request) {
     if (memcmp(pending_request + 4, "pin", 3) == 0) {
       handle_ping_pong();
@@ -205,8 +239,5 @@ void loop() {
     has_pending_request = false;
   }
 
-
-
   loop_sensor();
-  // delay(100);
 }

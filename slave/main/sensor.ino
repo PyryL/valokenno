@@ -105,7 +105,7 @@ void loop_sensor() {
 
   unsigned long int timestamp;
   int distance_reading = measure(timestamp);
-  Serial.printf("Distance: %3d\n", distance_reading);
+  // Serial.printf("Distance: %3d\n", distance_reading);
 
   if (distance_reading > 0 && distance_reading <= MOTION_DETECTION_MAX_THRESHOLD) {
     if (!did_detect_motion_last_time) {
