@@ -158,15 +158,23 @@ struct TimestampList: View {
             Text("No timestamps")
         } else {
             ForEach(timestamps, id: \.self) { timestamp in
-                HStack {
-                    Image(systemName: "checkmark")
-                        .opacity(timestamp == selectedTimestamp ? 1 : 0)
-                    Text("\(Formatters.formatTimestamp(timestamp))")
-                        .monospaced()
-                }
-                .onTapGesture {
+                Button {
                     selectedTimestamp = timestamp
+                } label: {
+                    ZStack(alignment: .leading) {
+                        Color.white
+                            .opacity(0.000001)
+
+                        HStack {
+                            Image(systemName: "checkmark")
+                                .opacity(timestamp == selectedTimestamp ? 1 : 0)
+
+                            Text("\(Formatters.formatTimestamp(timestamp))")
+                                .monospaced()
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
             }
         }
     }
