@@ -7,7 +7,7 @@
 
 Adafruit_NeoPixel pixel(1, PIN_NEOPIXEL);
 
-unsigned long slave_clock_offset;
+long slave_clock_offset;
 
 std::vector<unsigned long> motion_timestamps = {};
 
@@ -59,9 +59,9 @@ void blink(int count, bool is_error) {
 }
 
 bool sync_clocks() {
-  unsigned long avg_offset;
-  unsigned long min_offset = 9999999999999;
-  unsigned long max_offset = 0;
+  long avg_offset = 0;
+  long min_offset = LONG_MAX;
+  long max_offset = LONG_MIN;
 
   unsigned long rtt[5];
 
@@ -92,7 +92,7 @@ bool sync_clocks() {
 
     unsigned long t1 = bytes_to_int32(response_buffer);
 
-    unsigned long offset = t1 - (t0 + t2) / 2;
+    long offset = (long)t1 - (long)((t0 + t2) / 2);
     avg_offset += offset;
     if (offset < min_offset) {
       min_offset = offset;
@@ -110,7 +110,7 @@ bool sync_clocks() {
   Serial.printf("Sync done. Average RTT %lu ms\n", avg_rtt);
 
   if (max_offset - min_offset > 20) {
-    Serial.printf("Warning! Great variance in clock offsets: %lu - %lu ms\n", min_offset, max_offset);
+    Serial.printf("Warning! Great variance in clock offsets: %ld - %ld ms\n", min_offset, max_offset);
     Serial.printf("Individual RTTs were %lu, %lu, %lu, %lu, %lu\n", rtt[0], rtt[1], rtt[2], rtt[3], rtt[4]);
   }
 
