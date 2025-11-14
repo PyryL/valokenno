@@ -268,9 +268,8 @@ void loop_communications() {
     timestamp_response.remove(timestamp_response.length() - 1);
 
     uint8_t message_type[3] = {'t', 'i', 'm'};
-    uint8_t empty_payload[0];
     uint8_t slave_response[256];
-    int slave_response_len = send_message(message_type, empty_payload, 0, slave_response);
+    int slave_response_len = send_message(message_type, nullptr, 0, slave_response);
 
     if (slave_response_len < 0 || slave_response_len % 4 != 0) {
       Serial.println("Slave timestamp response failed");
@@ -294,9 +293,8 @@ void loop_communications() {
     switchToEspNow();
 
     uint8_t message_type[3] = {'c', 'l', 'e'};
-    uint8_t empty_payload[0];
     uint8_t slave_response[256];
-    int slave_response_len = send_message(message_type, empty_payload, 0, slave_response);
+    int slave_response_len = send_message(message_type, nullptr, 0, slave_response);
 
     if (slave_response_len == 2 && slave_response[0] == 'o' && slave_response[1] == 'k') {
       motion_timestamps.clear();

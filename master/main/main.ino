@@ -66,12 +66,11 @@ bool sync_clocks() {
   unsigned long rtt[5];
 
   uint8_t message_type[3] = {'s', 'y', 'n'};
-  uint8_t empty_payload[0] = {};
   uint8_t response_buffer[256];
 
   // warm the connection up
   for (int i=0; i<3; i++) {
-    int response_len = send_message(message_type, empty_payload, 0, response_buffer);
+    int response_len = send_message(message_type, nullptr, 0, response_buffer);
     if (response_len < 0) {
       return false;
     }
@@ -80,7 +79,7 @@ bool sync_clocks() {
 
   for (int i=0; i<5; i++) {
     unsigned long t0 = millis();
-    int response_len = send_message(message_type, empty_payload, 0, response_buffer);
+    int response_len = send_message(message_type, nullptr, 0, response_buffer);
     unsigned long t2 = millis();
 
     // response payload should be just 4 bytes of the timestamp
