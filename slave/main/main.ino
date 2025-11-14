@@ -139,12 +139,6 @@ void handle_motion_timestamp_request() {
     int32_to_bytes((uint32_t)motion_timestamps[i], response + (4 + 4 * i));
   }
 
-  Serial.print("Motion timestamp response bytes: ");
-  for (int i=0; i<response_len; i++) {
-    Serial.printf("%02X ", response[i]);
-  }
-  Serial.println();
-
   send_response(response, response_len);
 }
 
