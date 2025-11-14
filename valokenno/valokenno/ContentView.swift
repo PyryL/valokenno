@@ -60,6 +60,15 @@ struct ContentView: View {
                 timestamps = try? TimestampParser.parse(responseString)
             }
             isLoadingTimestamps = false
+
+            if let timestamps {
+                if timestamps.0.count == 1 {
+                    selectedTimestampDevice1 = timestamps.0.first!
+                }
+                if timestamps.1.count == 1 {
+                    selectedTimestampDevice2 = timestamps.1.first!
+                }
+            }
         }
     }
 
