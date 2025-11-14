@@ -279,7 +279,7 @@ void loop_communications() {
       int timestamp_count = slave_response_len / 4;
       for (int i=0; i<timestamp_count; i++) {
         unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
-        unsigned long unshifted_timestamp = slave_timestamp - slave_clock_offset;
+        unsigned long unshifted_timestamp = (unsigned long)((long)slave_timestamp - slave_clock_offset);
         timestamp_response += String(unshifted_timestamp) + ",";
       }
       timestamp_response.remove(timestamp_response.length() - 1);
