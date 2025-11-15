@@ -132,21 +132,25 @@ struct ContentView: View {
                     Button {
                         isClearConfirmAlertVisible = true
                     } label: {
-                        if isClearingTimestamps {
+                        ZStack {
                             ProgressView()
                                 .progressViewStyle(.circular)
-                        } else {
+                                .opacity(isClearingTimestamps ? 1 : 0)
+
                             Image(systemName: "trash")
+                                .opacity(isClearingTimestamps ? 0 : 1)
                         }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: getTimestamps) {
-                        if isLoadingTimestamps {
+                        ZStack {
                             ProgressView()
                                 .progressViewStyle(.circular)
-                        } else {
+                                .opacity(isLoadingTimestamps ? 1 : 0)
+
                             Image(systemName: "arrow.down.circle")
+                                .opacity(isLoadingTimestamps ? 0 : 1)
                         }
                     }
                 }
