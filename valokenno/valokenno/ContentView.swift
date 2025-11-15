@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     let manager = ConnectionManager()
+    private let locationManager = LocationManager()
     @State var connectionStatus: ConnectionStatus = .none
     @State var timestamps: ([UInt32], [UInt32])? = nil
     @State var selectedTimestampDevice1: UInt32? = nil
@@ -163,6 +164,7 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            locationManager.requestAuthorization()
             checkConnection()
         }
     }
