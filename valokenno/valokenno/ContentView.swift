@@ -112,10 +112,10 @@ struct ContentView: View {
 
                 if let selectedTimestampDevice1, let selectedTimestampDevice2, selectedTimestampDevice2 > selectedTimestampDevice1 {
                     Text("\(Formatters.formatTimestamp(selectedTimestampDevice2 - selectedTimestampDevice1, digits: 2))")
-                        .monospaced()
+                        .monospacedDigit()
                         .bold()
                 } else {
-                    Text("-,--")
+                    Text("-.--")
                         .monospaced()
                 }
             }
@@ -197,7 +197,7 @@ struct TimestampList: View {
                                 .opacity(timestamp == selectedTimestamp ? 1 : 0)
 
                             Text("\(Formatters.formatTimestamp(timestamp))")
-                                .monospaced()
+                                .monospacedDigit()
                         }
                     }
                 }
