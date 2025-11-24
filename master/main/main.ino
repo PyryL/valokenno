@@ -3,16 +3,24 @@
 #include <vector>
 #include <Adafruit_NeoPixel.h>
 
+#define MAX_SLAVE_COUNT 4
+
 // MASTER
 
 Adafruit_NeoPixel pixel(1, PIN_NEOPIXEL);
 
-long slave_clock_offset;
+long slave_clock_offsets[MAX_SLAVE_COUNT];
 
 std::vector<unsigned long> motion_timestamps = {};
 
+uint8_t slaveMacs[MAX_SLAVE_COUNT][6] = {
+  {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0xA4}, // slave 1
+  {0xB4, 0x3A, 0x45, 0x34, 0x0E, 0xDC}, // slave 2 (new)
+};
+int slave_count = 2;
 
-bool send_ping_pong() {
+
+bool send_ping_pong(int slave_index) {
   Serial.println("Sending ping-pong");
 
   uint8_t message_type[3] = {'p', 'i', 'n'};
@@ -20,7 +28,7 @@ bool send_ping_pong() {
 
   uint8_t response[256];
 
-  int response_len = send_message(message_type, random_payload, 8, response);
+  int response_len = send_message(slave_index, message_type, random_payload, 8, response);
 
   if (response_len != 8) {
     return false;
@@ -58,7 +66,7 @@ void blink(int count, bool is_error) {
   }
 }
 
-bool sync_clocks() {
+bool sync_clocks(int slave_index) {
   long avg_offset = 0;
   long min_offset = LONG_MAX;
   long max_offset = LONG_MIN;
@@ -70,7 +78,7 @@ bool sync_clocks() {
 
   // warm the connection up
   for (int i=0; i<3; i++) {
-    int response_len = send_message(message_type, nullptr, 0, response_buffer);
+    int response_len = send_message(slave_index, message_type, nullptr, 0, response_buffer);
     if (response_len < 0) {
       return false;
     }
@@ -79,7 +87,7 @@ bool sync_clocks() {
 
   for (int i=0; i<5; i++) {
     unsigned long t0 = millis();
-    int response_len = send_message(message_type, nullptr, 0, response_buffer);
+    int response_len = send_message(slave_index, message_type, nullptr, 0, response_buffer);
     unsigned long t2 = millis();
 
     // response payload should be just 4 bytes of the timestamp
@@ -106,14 +114,14 @@ bool sync_clocks() {
   }
 
   unsigned long avg_rtt = (rtt[0] + rtt[1] + rtt[2] + rtt[3] + rtt[4]) / 5;
-  Serial.printf("Sync done. Average RTT %lu ms\n", avg_rtt);
+  Serial.printf("Sync for slave %d done. Average RTT %lu ms\n", slave_index, avg_rtt);
 
   if (max_offset - min_offset > 20) {
-    Serial.printf("Warning! Great variance in clock offsets: %ld - %ld ms\n", min_offset, max_offset);
+    Serial.printf("Warning! Great variance in slave %d clock offsets: %ld - %ld ms\n", slave_index, min_offset, max_offset);
     Serial.printf("Individual RTTs were %lu, %lu, %lu, %lu, %lu\n", rtt[0], rtt[1], rtt[2], rtt[3], rtt[4]);
   }
 
-  slave_clock_offset = avg_offset / 5;
+  slave_clock_offsets[slave_index] = avg_offset / 5;
 
   return true;
 }
@@ -141,15 +149,29 @@ void setup() {
   while (true) {
     switchToEspNow();
 
-    if (!send_ping_pong()) {
-      blink(2, true);
-      delay(1000);
+    bool ping_pong_successful = true;
+    for (int i=0; i<slave_count; i++) {
+      if (!send_ping_pong(i)) {
+        blink(2, true);
+        delay(1000);
+        ping_pong_successful = false;
+        break;
+      }
+    }
+    if (!ping_pong_successful) {
       continue;
     }
 
-    if (!sync_clocks()) {
-      blink(4, true);
-      delay(1000);
+    bool clock_sync_successful = true;
+    for (int i=0; i<slave_count; i++) {
+      if (!sync_clocks(i)) {
+        blink(4, true);
+        delay(1000);
+        clock_sync_successful = false;
+        break;
+      }
+    }
+    if (!clock_sync_successful) {
       continue;
     }
 
