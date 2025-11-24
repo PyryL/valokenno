@@ -279,7 +279,7 @@ void loop_communications() {
       if (slave_response_len < 0 || slave_response_len % 4 != 0) {
         Serial.println("Slave timestamp response failed");
       } else {
-        timestamp_response += ";dev" + String(slave_index) + ",";
+        timestamp_response += ";dev" + String(slave_index+2) + ",";
         int timestamp_count = slave_response_len / 4;
         for (int i=0; i<timestamp_count; i++) {
           unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
@@ -304,7 +304,7 @@ void loop_communications() {
       uint8_t slave_response[256];
       int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
 
-      if (slave_response_len != 2 || slave_response[0] != 'o' && slave_response[1] != 'k') {
+      if (slave_response_len != 2 || slave_response[0] != 'o' || slave_response[1] != 'k') {
         Serial.printf("Clearing slave %d failed\n", slave_index);
         all_slaves_cleared_successfully = false;
         break;
