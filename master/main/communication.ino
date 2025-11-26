@@ -277,7 +277,8 @@ void loop_communications() {
       int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
 
       if (slave_response_len < 0 || slave_response_len % 4 != 0) {
-        Serial.println("Slave timestamp response failed");
+        Serial.printf("Slave %d timestamp response failed\n", slave_index);
+        timestamp_response += ";dev" + String(slave_index+2);
       } else {
         timestamp_response += ";dev" + String(slave_index+2) + ",";
         int timestamp_count = slave_response_len / 4;
