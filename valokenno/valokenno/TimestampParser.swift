@@ -6,17 +6,21 @@
 //
 
 class TimestampParser {
-    static func parse(_ timestamps: String) throws -> ([UInt32], [UInt32]) {
+    static func parse(_ timestamps: String, deviceCount: Int) throws -> [[UInt32]] {
         let devices = timestamps.split(separator: ";")
 
-        guard devices.count == 2 else {
+        guard devices.count == deviceCount else {
             throw ParseError.invalid
         }
 
-        let timestamps1 = try parseDevice(String(devices[0]), deviceNumber: 1)
-        let timestamps2 = try parseDevice(String(devices[1]), deviceNumber: 2)
+        var result: [[UInt32]] = []
 
-        return (timestamps1, timestamps2)
+        for i in 0..<deviceCount {
+            let deviceTimestamps = try parseDevice(String(devices[i]), deviceNumber: i+1)
+            result.append(deviceTimestamps)
+        }
+
+        return result
     }
 
     static private func parseDevice(_ string: String, deviceNumber: Int) throws -> [UInt32] {

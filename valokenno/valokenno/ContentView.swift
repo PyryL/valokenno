@@ -9,10 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     let manager = ConnectionManager()
+    @State var timestampManager = TimestampManager(deviceCount: 3)
     @State var connectionStatus: ConnectionStatus = .none
-    @State var timestamps: ([UInt32], [UInt32])? = nil
-    @State var selectedTimestampDevice1: UInt32? = nil
-    @State var selectedTimestampDevice2: UInt32? = nil
 
     @State var isClearConfirmAlertVisible: Bool = false
 
@@ -50,25 +48,14 @@ struct ContentView: View {
             return
         }
 
-        timestamps = nil
-        selectedTimestampDevice1 = nil
-        selectedTimestampDevice2 = nil
+        timestampManager.clear()
         isLoadingTimestamps = true
 
         Task {
             if let responseString = await manager.getTimestamps() {
-                timestamps = try? TimestampParser.parse(responseString)
+                try timestampManager.setTimestamps(response: responseString)
             }
             isLoadingTimestamps = false
-
-            if let timestamps {
-                if timestamps.0.count == 1 {
-                    selectedTimestampDevice1 = timestamps.0.first!
-                }
-                if timestamps.1.count == 1 {
-                    selectedTimestampDevice2 = timestamps.1.first!
-                }
-            }
         }
     }
 
@@ -81,9 +68,7 @@ struct ContentView: View {
 
         Task {
             if await manager.clearTimestamps() {
-                timestamps = nil
-                selectedTimestampDevice1 = nil
-                selectedTimestampDevice2 = nil
+                timestampManager.clear()
             }
             isClearingTimestamps = false
         }
@@ -93,30 +78,13 @@ struct ContentView: View {
         NavigationStack {
             VStack {
                 List {
-                    Section {
-                        if let timestamps {
-                            TimestampList(timestamps: timestamps.0, selectedTimestamp: $selectedTimestampDevice1)
+                    ForEach(0..<timestampManager.deviceCount, id: \.self) { deviceIndex in
+                        Section {
+                            TimestampList(timestampManager: timestampManager, deviceIndex: deviceIndex)
+                        } header: {
+                            Text("Device \(deviceIndex+1)")
                         }
-                    } header: {
-                        Text("Device 1")
                     }
-
-                    Section {
-                        if let timestamps {
-                            TimestampList(timestamps: timestamps.1, selectedTimestamp: $selectedTimestampDevice2)
-                        }
-                    } header: {
-                        Text("Device 2")
-                    }
-                }
-
-                if let selectedTimestampDevice1, let selectedTimestampDevice2, selectedTimestampDevice2 > selectedTimestampDevice1 {
-                    Text("\(Formatters.formatTimestamp(selectedTimestampDevice2 - selectedTimestampDevice1, digits: 2))")
-                        .monospacedDigit()
-                        .bold()
-                } else {
-                    Text("-.--")
-                        .monospaced()
                 }
             }
             .navigationTitle("Valokenno")
@@ -177,36 +145,130 @@ struct ContentView: View {
 }
 
 struct TimestampList: View {
-    var timestamps: [UInt32]
-    @Binding var selectedTimestamp: UInt32?
+    var timestampManager: TimestampManager
+    var deviceIndex: Int
 
     var body: some View {
-        if timestamps.isEmpty {
-            Text("No timestamps")
-        } else {
-            ForEach(timestamps, id: \.self) { timestamp in
-                Button {
-                    selectedTimestamp = timestamp
-                } label: {
-                    ZStack(alignment: .leading) {
-                        Color.white
-                            .opacity(0.000001)
+        if let timestamps = timestampManager.timestamps(for: deviceIndex) {
+            if timestamps.isEmpty {
+                Text("No timestamps")
+            } else {
+                ForEach(timestamps, id: \.self) { timestamp in
+                    Button {
+                        timestampManager.selectTimestamp(timestamp, device: deviceIndex)
+                    } label: {
+                        ZStack(alignment: .leading) {
+                            Color.white
+                                .opacity(0.000001)
 
-                        HStack {
-                            Image(systemName: "checkmark")
-                                .opacity(timestamp == selectedTimestamp ? 1 : 0)
+                            HStack {
+                                Image(systemName: "checkmark")
+                                    .opacity(timestamp == timestampManager.selectedTimestamp(for: deviceIndex) ? 1 : 0)
 
-                            Text("\(Formatters.formatTimestamp(timestamp))")
-                                .monospacedDigit()
+                                Text("\(Formatters.formatTimestamp(timestamp))")
+                                    .monospacedDigit()
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+
+                if deviceIndex > 0 {
+                    HStack {
+                        Spacer()
+
+                        Image(systemName: "sum")
+
+                        if let t0 = timestampManager.selectedTimestamp(for: 0), let t1 = timestampManager.selectedTimestamp(for: deviceIndex), t1 >= t0 {
+                            Text("\(Formatters.formatTimestamp(t1 - t0, digits: 2))")
+                                .monospacedDigit()
+                        } else {
+                            Text("-.--")
+                                .monospaced()
+                        }
+
+                        Spacer()
+
+                        Group {
+                            Image(systemName: "chevron.forward.dotted.chevron.forward")
+
+                            if let t1 = timestampManager.selectedTimestamp(for: deviceIndex-1), let t2 = timestampManager.selectedTimestamp(for: deviceIndex), t2 >= t1 {
+                                Text("\(Formatters.formatTimestamp(t2 - t1, digits: 2))")
+                                    .monospacedDigit()
+                            } else {
+                                Text("-.--")
+                                    .monospaced()
+                            }
+                        }
+                        .opacity(deviceIndex > 1 ? 1.0 : 0.0)
+
+                        Spacer()
+                    }
+                    .bold()
+                }
             }
         }
     }
 }
 
+@Observable
+class TimestampManager {
+    init(deviceCount: Int) {
+        self.deviceCount = deviceCount
+    }
+
+    private(set) var deviceCount: Int
+
+    /// The outer array is empty if no data is available, or contains `deviceCount` many subarrays of timestamps.
+    private var timestamps: [[UInt32]] = []
+
+    /// The array is empty if no timestamp data is available.
+    /// Whenever `timestamps` is not empty, this array has `deviceCount` values.
+    /// `nil` value means no selection.
+    private var selectedTimestamps: [UInt32?] = []
+
+    public func setTimestamps(response: String) throws {
+        timestamps = try TimestampParser.parse(response, deviceCount: deviceCount)
+
+        selectedTimestamps = Array(repeating: nil, count: deviceCount)
+
+        for i in 0..<deviceCount {
+            if timestamps[i].count == 1 {
+                selectedTimestamps[i] = timestamps[i].first!
+            }
+        }
+    }
+
+    public func selectTimestamp(_ timestamp: UInt32, device: Int) {
+        guard selectedTimestamps.count == deviceCount, device >= 0, device < deviceCount else {
+            return
+        }
+        selectedTimestamps[device] = timestamp
+    }
+
+    public func timestamps(for device: Int) -> [UInt32]? {
+        guard timestamps.count == deviceCount, device >= 0, device < deviceCount else {
+            return nil
+        }
+        return timestamps[device]
+    }
+
+    public func selectedTimestamp(for device: Int) -> UInt32? {
+        guard selectedTimestamps.count == deviceCount, device >= 0, device < deviceCount else {
+            return nil
+        }
+        return selectedTimestamps[device]
+    }
+
+    public func clear() {
+        timestamps = []
+        selectedTimestamps = []
+    }
+}
+
 #Preview {
-    ContentView()
+    let timestampManager = TimestampManager(deviceCount: 3)
+    try? timestampManager.setTimestamps(response: "dev1,10000,15000;dev2,12000,17000;dev3,16000,20000")
+
+    return ContentView(timestampManager: timestampManager)
 }
