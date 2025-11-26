@@ -1,8 +1,6 @@
 #include <WebServer.h>
 #include "esp_wifi.h"
 
-uint8_t slaveMac[] = {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0xA4};
-
 enum RadioMode {
   ESP_NOW_MODE,
   AP_MODE
@@ -40,13 +38,18 @@ void switchToEspNow() {
 
     esp_now_register_recv_cb(espNowReceived);
 
-    esp_now_peer_info_t peer;
-    // memset(&peer, 0, sizeof(peer));
-    memcpy(peer.peer_addr, slaveMac, 6);
-    peer.channel = 1;
-    peer.encrypt = false;
-    peer.ifidx = WIFI_IF_STA;
-    esp_err_t result = esp_now_add_peer(&peer);
+    for (int i=0; i<slave_count; i++) {
+      esp_now_peer_info_t peer;
+      // memset(&peer, 0, sizeof(peer));
+      memcpy(peer.peer_addr, slaveMacs[i], 6);
+      peer.channel = 1;
+      peer.encrypt = false;
+      peer.ifidx = WIFI_IF_STA;
+      esp_err_t result = esp_now_add_peer(&peer);
+      if (result != ESP_OK) {
+        Serial.printf("Adding ESP-NOW peer slave %d failed: %d\n", i, result);
+      }
+    }
 
     current_radio_mode = ESP_NOW_MODE;
   }
@@ -135,7 +138,7 @@ uint32_t bytes_to_int32(uint8_t bytes[4]) {
 Response payload buffer must be 256 bytes long.
 Returns the response payload length, or `-1` on error.
 */
-int send_message(uint8_t message_type[3], uint8_t *request_payload, int request_payload_len, uint8_t *response_payload) {
+int send_message(int slave_index, uint8_t message_type[3], uint8_t *request_payload, int request_payload_len, uint8_t *response_payload) {
   if (current_radio_mode != ESP_NOW_MODE) {
     Serial.println("Tried sending in wrong mode");
     return -1;
@@ -168,7 +171,7 @@ int send_message(uint8_t message_type[3], uint8_t *request_payload, int request_
 
   esp_now_waiting_response = true;
 
-  esp_err_t send_success = esp_now_send(slaveMac, request, request_length);
+  esp_err_t send_success = esp_now_send(slaveMacs[slave_index], request, request_length);
   if (send_success != ESP_OK) {
     esp_now_waiting_response = false;
     return -1;
@@ -268,21 +271,24 @@ void loop_communications() {
     }
     timestamp_response.remove(timestamp_response.length() - 1);
 
-    uint8_t message_type[3] = {'t', 'i', 'm'};
-    uint8_t slave_response[256];
-    int slave_response_len = send_message(message_type, nullptr, 0, slave_response);
+    for (int slave_index=0; slave_index<slave_count; slave_index++) {
+      uint8_t message_type[3] = {'t', 'i', 'm'};
+      uint8_t slave_response[256];
+      int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
 
-    if (slave_response_len < 0 || slave_response_len % 4 != 0) {
-      Serial.println("Slave timestamp response failed");
-    } else {
-      timestamp_response += ";dev2,";
-      int timestamp_count = slave_response_len / 4;
-      for (int i=0; i<timestamp_count; i++) {
-        unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
-        unsigned long unshifted_timestamp = (unsigned long)((long)slave_timestamp - slave_clock_offset);
-        timestamp_response += String(unshifted_timestamp) + ",";
+      if (slave_response_len < 0 || slave_response_len % 4 != 0) {
+        Serial.printf("Slave %d timestamp response failed\n", slave_index);
+        timestamp_response += ";dev" + String(slave_index+2);
+      } else {
+        timestamp_response += ";dev" + String(slave_index+2) + ",";
+        int timestamp_count = slave_response_len / 4;
+        for (int i=0; i<timestamp_count; i++) {
+          unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
+          unsigned long unshifted_timestamp = (unsigned long)((long)slave_timestamp - slave_clock_offsets[slave_index]);
+          timestamp_response += String(unshifted_timestamp) + ",";
+        }
+        timestamp_response.remove(timestamp_response.length() - 1);
       }
-      timestamp_response.remove(timestamp_response.length() - 1);
     }
 
     switchToApMode();
@@ -293,11 +299,19 @@ void loop_communications() {
   if (pending_clear_process) {
     switchToEspNow();
 
-    uint8_t message_type[3] = {'c', 'l', 'e'};
-    uint8_t slave_response[256];
-    int slave_response_len = send_message(message_type, nullptr, 0, slave_response);
+    bool all_slaves_cleared_successfully = true;
+    for (int slave_index=0; slave_index<slave_count; slave_index++) {
+      uint8_t message_type[3] = {'c', 'l', 'e'};
+      uint8_t slave_response[256];
+      int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
 
-    if (slave_response_len == 2 && slave_response[0] == 'o' && slave_response[1] == 'k') {
+      if (slave_response_len != 2 || slave_response[0] != 'o' || slave_response[1] != 'k') {
+        Serial.printf("Clearing slave %d failed\n", slave_index);
+        all_slaves_cleared_successfully = false;
+        break;
+      }
+    }
+    if (all_slaves_cleared_successfully) {
       motion_timestamps.clear();
       clear_process_response = "ok";
     } else {
