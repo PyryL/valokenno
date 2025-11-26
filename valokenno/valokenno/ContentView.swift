@@ -175,6 +175,8 @@ struct TimestampList: View {
 
                 if deviceIndex > 0 {
                     HStack {
+                        Spacer()
+
                         Image(systemName: "sum")
 
                         if let t0 = timestampManager.selectedTimestamp(for: 0), let t1 = timestampManager.selectedTimestamp(for: deviceIndex), t1 >= t0 {
@@ -187,15 +189,18 @@ struct TimestampList: View {
 
                         Spacer()
 
-                        Image(systemName: "chevron.forward.dotted.chevron.forward")
+                        Group {
+                            Image(systemName: "chevron.forward.dotted.chevron.forward")
 
-                        if let t1 = timestampManager.selectedTimestamp(for: deviceIndex-1), let t2 = timestampManager.selectedTimestamp(for: deviceIndex), t2 >= t1 {
-                            Text("\(Formatters.formatTimestamp(t2 - t1, digits: 2))")
-                                .monospacedDigit()
-                        } else {
-                            Text("-.--")
-                                .monospaced()
+                            if let t1 = timestampManager.selectedTimestamp(for: deviceIndex-1), let t2 = timestampManager.selectedTimestamp(for: deviceIndex), t2 >= t1 {
+                                Text("\(Formatters.formatTimestamp(t2 - t1, digits: 2))")
+                                    .monospacedDigit()
+                            } else {
+                                Text("-.--")
+                                    .monospaced()
+                            }
                         }
+                        .opacity(deviceIndex > 1 ? 1.0 : 0.0)
 
                         Spacer()
                     }
