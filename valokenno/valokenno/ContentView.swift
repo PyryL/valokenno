@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     let manager = ConnectionManager()
-    @State private var timestampManager = TimestampManager(deviceCount: 3)
+    @State var timestampManager = TimestampManager(deviceCount: 3)
     @State var connectionStatus: ConnectionStatus = .none
 
     @State var isClearConfirmAlertVisible: Bool = false
@@ -267,5 +267,8 @@ class TimestampManager {
 }
 
 #Preview {
-    ContentView()
+    let timestampManager = TimestampManager(deviceCount: 3)
+    try? timestampManager.setTimestamps(response: "dev1,10000,15000;dev2,12000,17000;dev3,16000,20000")
+
+    return ContentView(timestampManager: timestampManager)
 }
