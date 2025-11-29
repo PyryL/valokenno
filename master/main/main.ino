@@ -24,6 +24,11 @@ uint8_t slaveMacs[MAX_SLAVE_COUNT][6] = {
 };
 int slave_count = 2;
 
+#ifdef MASTER_TYPE_STARTER
+// used by communication.ino and starter.ino
+bool has_new_starter_request = false;
+#endif
+
 
 bool send_ping_pong(int slave_index) {
   Serial.println("Sending ping-pong");
@@ -198,6 +203,10 @@ void setup() {
     }
   #endif
 
+  #ifdef MASTER_TYPE_STARTER
+    setup_starter();
+  #endif
+
   blink(1, false);
   Serial.println("Setup completed");
 }
@@ -207,6 +216,9 @@ void loop() {
 
   #ifdef MASTER_TYPE_SENSOR
     loop_sensor();
+  #endif
+  #ifdef MASTER_TYPE_STARTER
+    loop_starter();
   #endif
 
   // delay(100);
