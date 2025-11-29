@@ -26,10 +26,6 @@ void set_led_error() {
 
 
 bool setup_sensor() {
-  serial.begin(115200);
-
-  delay(100);
-
   // try to get a valid reading with 10 retries
   for (int i=0; i<10; i++) {
     unsigned long int timestamp;
