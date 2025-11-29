@@ -3,6 +3,11 @@
 #include <vector>
 #include <Adafruit_NeoPixel.h>
 
+// Exactly one of these should be defined
+#define MASTER_TYPE_STARTER
+// #define MASTER_TYPE_SENSOR
+
+
 #define MAX_SLAVE_COUNT 4
 
 // MASTER
@@ -18,6 +23,11 @@ uint8_t slaveMacs[MAX_SLAVE_COUNT][6] = {
   {0xB4, 0x3A, 0x45, 0x34, 0x0E, 0xDC}, // slave 2 (new)
 };
 int slave_count = 2;
+
+#ifdef MASTER_TYPE_STARTER
+// used by communication.ino and starter.ino
+bool has_new_starter_request = false;
+#endif
 
 
 bool send_ping_pong(int slave_index) {
@@ -181,15 +191,21 @@ void setup() {
 
   setup_communications();
 
-  while (true) {
-    if (!setup_sensor()) {
-      Serial.println("Sensor setup failed");
-      blink(6, true);
-      delay(1000);
-      continue;
+  #ifdef MASTER_TYPE_SENSOR
+    while (true) {
+      if (!setup_sensor()) {
+        Serial.println("Sensor setup failed");
+        blink(6, true);
+        delay(1000);
+        continue;
+      }
+      break;
     }
-    break;
-  }
+  #endif
+
+  #ifdef MASTER_TYPE_STARTER
+    setup_starter();
+  #endif
 
   blink(1, false);
   Serial.println("Setup completed");
@@ -198,7 +214,12 @@ void setup() {
 void loop() {
   loop_communications();
 
-  loop_sensor();
+  #ifdef MASTER_TYPE_SENSOR
+    loop_sensor();
+  #endif
+  #ifdef MASTER_TYPE_STARTER
+    loop_starter();
+  #endif
 
   // delay(100);
 }

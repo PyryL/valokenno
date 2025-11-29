@@ -7,7 +7,7 @@
 
 Adafruit_NeoPixel pixel(1, PIN_NEOPIXEL);
 
-uint8_t masterMac[] = {0xDC, 0x54, 0x75, 0xC1, 0xDD, 0x08};
+volatile uint8_t masterMac[6];
 
 bool fatal_setup_error = false;
 
@@ -47,7 +47,7 @@ void send_response(uint8_t *response, int response_len) {
     return;
   }
 
-  esp_err_t success = esp_now_send(masterMac, response, response_len);
+  esp_err_t success = esp_now_send((const uint8_t*)masterMac, response, response_len);
   if (success != ESP_OK) {
     Serial.println("Response sending failed: " + success);
   }
@@ -57,6 +57,11 @@ void onReceive(const esp_now_recv_info* info, const unsigned char* data, int len
   if (len < 7) {
     // invalid request
     return;
+  }
+
+  // new master detection
+  if (memcmp((const void*)masterMac, (const void*)info->src_addr, 6) != 0) {
+    update_master_mac(info->src_addr);
   }
 
   // handle clock sync immediately in the interruption to minimize latency
@@ -116,7 +121,7 @@ void handle_clock_sync(const uint8_t *request) {
   unsigned long current_time = millis();
   int32_to_bytes((uint32_t)current_time, response + 4);
 
-  esp_err_t success = esp_now_send(masterMac, response, 8);
+  esp_err_t success = esp_now_send((const uint8_t*)masterMac, response, 8);
   if (success != ESP_OK) {
     Serial.println("Sync response sending failed: " + String(success));
   }
@@ -155,6 +160,30 @@ void handle_clear_request() {
   send_response(response, 6);
 }
 
+void update_master_mac(const uint8_t *new_mac) {
+  Serial.printf(
+    "Updated to new master: %02X:%02X:%02X:%02X:%02X:%02X\n",
+    new_mac[0], new_mac[1], new_mac[2], new_mac[3], new_mac[4], new_mac[5]
+  );
+
+  // delete any existing peer
+  esp_now_del_peer((const uint8_t*)masterMac);
+
+  memcpy((void*)masterMac, new_mac, 6);
+
+  esp_now_peer_info_t peer;
+  memset(&peer, 0, sizeof(peer));
+  memcpy(peer.peer_addr, (const void*)masterMac, 6);
+  peer.channel = 0;
+  peer.encrypt = false;
+  peer.ifidx = WIFI_IF_STA;
+
+  esp_err_t result = esp_now_add_peer(&peer);
+  if (result != ESP_OK) {
+    Serial.printf("ESP-NOW peer adding failed: %d\n", result);
+  }
+}
+
 bool setup_wifi() {
   WiFi.mode(WIFI_STA);
 
@@ -172,19 +201,6 @@ bool setup_wifi() {
 
   if (esp_now_register_recv_cb(onReceive) != ESP_OK) {
     Serial.println("ESP-NOW callback function register failed");
-    return false;
-  }
-
-  esp_now_peer_info_t peer;
-  memset(&peer, 0, sizeof(peer));
-  memcpy(peer.peer_addr, masterMac, 6);
-  peer.channel = 0;
-  peer.encrypt = false;
-  peer.ifidx = WIFI_IF_STA;
-
-  esp_err_t result = esp_now_add_peer(&peer);
-  if (result != ESP_OK) {
-    Serial.printf("ESP-NOW peer adding failed: %d\n", result);
     return false;
   }
 
