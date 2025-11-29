@@ -3,6 +3,11 @@
 #include <vector>
 #include <Adafruit_NeoPixel.h>
 
+// Exactly one of these should be defined
+#define MASTER_TYPE_STARTER
+// #define MASTER_TYPE_SENSOR
+
+
 #define MAX_SLAVE_COUNT 4
 
 // MASTER
@@ -181,15 +186,17 @@ void setup() {
 
   setup_communications();
 
-  while (true) {
-    if (!setup_sensor()) {
-      Serial.println("Sensor setup failed");
-      blink(6, true);
-      delay(1000);
-      continue;
+  #ifdef MASTER_TYPE_SENSOR
+    while (true) {
+      if (!setup_sensor()) {
+        Serial.println("Sensor setup failed");
+        blink(6, true);
+        delay(1000);
+        continue;
+      }
+      break;
     }
-    break;
-  }
+  #endif
 
   blink(1, false);
   Serial.println("Setup completed");
@@ -198,7 +205,9 @@ void setup() {
 void loop() {
   loop_communications();
 
-  loop_sensor();
+  #ifdef MASTER_TYPE_SENSOR
+    loop_sensor();
+  #endif
 
   // delay(100);
 }
