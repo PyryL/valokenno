@@ -1,6 +1,7 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include <vector>
+#include "esp_random.h"
 #include <Adafruit_NeoPixel.h>
 
 // Exactly one of these should be defined
