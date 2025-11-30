@@ -118,4 +118,24 @@ class ConnectionManager {
 
         return false
     }
+
+    public func activateStarter() async -> Bool {
+        guard let url = URL(string: "\(baseUrl)/starter") else {
+            return false
+        }
+
+        guard let (data, response) = try? await urlSession.data(from: url) else {
+            return false
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            return false
+        }
+
+        guard let string = String(data: data, encoding: .utf8) else {
+            return false
+        }
+
+        return string == "ok"
+    }
 }
