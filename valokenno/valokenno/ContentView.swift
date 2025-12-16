@@ -13,6 +13,7 @@ struct ContentView: View {
     @State var connectionStatus: ConnectionStatus = .none
 
     @State var isClearConfirmAlertVisible: Bool = false
+    @State var isStarterSheetVisible: Bool = false
 
     @State var isLoadingTimestamps: Bool = false
     @State var isClearingTimestamps: Bool = false
@@ -96,6 +97,20 @@ struct ContentView: View {
                             checkConnection()
                         }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu("Actions", systemImage: "ellipsis.circle") {
+                        Button {
+                            isStarterSheetVisible = true
+                        } label: {
+                            Label("Starter", systemImage: "play")
+                        }
+                        Button {
+                            //
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isClearConfirmAlertVisible = true
@@ -132,6 +147,9 @@ struct ContentView: View {
                 } label: {
                     Text("Clear")
                 }
+            }
+            .fullScreenCover(isPresented: $isStarterSheetVisible) {
+                StarterView(isVisible: $isStarterSheetVisible, connectionManager: manager)
             }
         }
         .onAppear {

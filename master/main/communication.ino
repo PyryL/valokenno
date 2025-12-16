@@ -245,6 +245,14 @@ void handle_ap_clear_result_request() {
   }
 }
 
+#ifdef MASTER_TYPE_STARTER
+void handle_ap_starter_request() {
+  Serial.println("Starter request received");
+  has_new_starter_request = true;
+  ap_server.send(200, "text/plain", "ok");
+}
+#endif
+
 
 void setup_communications() {
   ap_server.on("/status", HTTP_GET, handle_ap_status_request);
@@ -252,6 +260,11 @@ void setup_communications() {
   ap_server.on("/timestamps/result", HTTP_GET, handle_ap_timestamp_result_request);
   ap_server.on("/clear", HTTP_GET, handle_ap_clear_request);
   ap_server.on("/clear/result", HTTP_GET, handle_ap_clear_result_request);
+
+  #ifdef MASTER_TYPE_STARTER
+    ap_server.on("/starter", HTTP_GET, handle_ap_starter_request);
+  #endif
+
   ap_server.begin();
 
   // Serial.println("Access point IP: " + WiFi.softAPIP().toString());
