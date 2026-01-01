@@ -128,24 +128,22 @@ class ConnectionManager {
         throw ConnectionError.couldNotReceiveResponseInTime
     }
 
-    public func activateStarter() async -> Bool {
+    public func activateStarter() async throws {
         guard let url = URL(string: "\(baseUrl)/starter") else {
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
         guard let (data, response) = try? await urlSession.data(from: url) else {
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            return false
+            throw ConnectionError.invalidResponseFormat
         }
 
-        guard let string = String(data: data, encoding: .utf8) else {
-            return false
+        guard let string = String(data: data, encoding: .utf8), string == "ok" else {
+            throw ConnectionError.invalidResponseFormat
         }
-
-        return string == "ok"
     }
 
     enum ConnectionError: Error {

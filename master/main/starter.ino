@@ -48,6 +48,7 @@ void setup_starter() {
 }
 
 void loop_starter() {
+  // TODO: must check that starter_set_sound_time and starter_beep_sound_time are zero, that is, there is no ongoing starter sequence
   if (has_new_starter_request) {
     starter_set_sound_time = millis() + 10000;
     has_new_starter_request = false;
