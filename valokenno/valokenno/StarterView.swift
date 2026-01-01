@@ -12,7 +12,7 @@ struct StarterView: View {
     var connectionManager: ConnectionManager
 
     @State private var state: StarterState = .notActivated
-    @State private var isFailureAlertVisible: Bool = false
+    @State private var errorAlert: String? = nil
 
     private func activate() {
         guard state == .notActivated else {
@@ -21,11 +21,16 @@ struct StarterView: View {
         state = .activating
 
         Task {
-            if await connectionManager.activateStarter() {
+            do {
+                try await connectionManager.activateStarter()
                 state = .activated
-            } else {
+            } catch {
                 state = .notActivated
-                isFailureAlertVisible = true
+                if let connectionError = error as? ConnectionManager.ConnectionError {
+                    errorAlert = connectionError.description
+                } else {
+                    errorAlert = "Unexpected error occurred: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -83,8 +88,13 @@ struct StarterView: View {
                     }
                 }
             }
-            .alert("Starter failed", isPresented: $isFailureAlertVisible) {
+            .alert("Starter failed", isPresented: Binding(
+                get: { errorAlert != nil },
+                set: { if !$0 { errorAlert = nil } }
+            )) {
                 Button("OK") { }
+            } message: {
+                Text(errorAlert ?? "")
             }
         }
     }
