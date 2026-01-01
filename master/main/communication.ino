@@ -218,7 +218,7 @@ void handle_ap_timestamp_request() {
 
 void handle_ap_timestamp_result_request() {
   if (timestamp_response.length() > 0) {
-    ap_server.send(200, "text/plain", timestamp_response);
+    ap_server.send(200, "application/json", timestamp_response);
     timestamp_response = "";
   } else {
     ap_server.send(404, "text/plain", "Still processing");
@@ -238,7 +238,7 @@ void handle_ap_clear_request() {
 
 void handle_ap_clear_result_request() {
   if (clear_process_response.length() > 0) {
-    ap_server.send(200, "text/plain", clear_process_response);
+    ap_server.send(200, "application/json", clear_process_response);
     clear_process_response = "";
   } else {
     ap_server.send(404, "text/plain", "Still processing");
