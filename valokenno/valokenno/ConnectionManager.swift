@@ -79,28 +79,24 @@ class ConnectionManager {
         throw ConnectionError.couldNotReceiveResponseInTime
     }
 
-    public func clearTimestamps() async -> Bool {
+    public func clearTimestamps() async throws {
         guard let startUrl = URL(string: "\(baseUrl)/clear"),
               let resultUrl = URL(string: "\(baseUrl)/clear/result") else {
 
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
         guard let (_, response) = try? await urlSession.data(from: startUrl) else {
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
 
         for _ in 0..<5 {
-            do {
-                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-            } catch {
-                return false
-            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
 
             guard let (data, response) = try? await urlSession.data(from: resultUrl) else {
                 continue
@@ -110,14 +106,26 @@ class ConnectionManager {
                 continue
             }
 
-            guard let string = String(data: data, encoding: .utf8) else {
-                continue
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String:Any],
+                  let success = object["success"] as? Bool,
+                  let errorMessage = object["error"] as? String else {
+
+                throw ConnectionError.invalidResponseFormat
             }
 
-            return string == "ok"
+            if !errorMessage.isEmpty {
+                throw ConnectionError.masterReportedError(errorMessage)
+            }
+
+            guard success else {
+                // if success is false, error message should be provided
+                throw ConnectionError.invalidResponseFormat
+            }
+
+            return
         }
 
-        return false
+        throw ConnectionError.couldNotReceiveResponseInTime
     }
 
     public func activateStarter() async -> Bool {
@@ -141,7 +149,7 @@ class ConnectionManager {
     }
 
     enum ConnectionError: Error {
-        case invalidResponseFormat, couldNotStartProcess, couldNotReceiveResponseInTime
+        case invalidResponseFormat, couldNotStartProcess, couldNotReceiveResponseInTime, masterReportedError(String)
 
         var description: String {
             switch self {
@@ -151,6 +159,8 @@ class ConnectionManager {
                 "Could not connect the master device to initialize the action"
             case .couldNotReceiveResponseInTime:
                 "Master device did not respond in time"
+            case .masterReportedError(let message):
+                message
             }
         }
     }

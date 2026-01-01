@@ -338,7 +338,8 @@ void loop_communications() {
   if (pending_clear_process) {
     switchToEspNow();
 
-    bool all_slaves_cleared_successfully = true;
+    int failed_slave_index = -1;
+
     for (int slave_index=0; slave_index<slave_count; slave_index++) {
       uint8_t message_type[3] = {'c', 'l', 'e'};
       uint8_t slave_response[256];
@@ -346,15 +347,15 @@ void loop_communications() {
 
       if (slave_response_len != 2 || slave_response[0] != 'o' || slave_response[1] != 'k') {
         Serial.printf("Clearing slave %d failed\n", slave_index);
-        all_slaves_cleared_successfully = false;
+        failed_slave_index = slave_index;
         break;
       }
     }
-    if (all_slaves_cleared_successfully) {
+    if (failed_slave_index < 0) {
       motion_timestamps.clear();
-      clear_process_response = "ok";
+      clear_process_response = "{\"success\":true,\"error\":\"\"}";
     } else {
-      clear_process_response = "failed";
+      clear_process_response = "{\"success\":false,\"error\":\"Slave " + String(failed_slave_index+1) + " failed to clear.\"}";
     }
 
     switchToApMode();

@@ -77,8 +77,15 @@ struct ContentView: View {
         isClearingTimestamps = true
 
         Task {
-            if await manager.clearTimestamps() {
+            do {
+                try await manager.clearTimestamps()
                 timestampManager.clear()
+            } catch {
+                if let connectionError = error as? ConnectionManager.ConnectionError {
+                    errorAlert = connectionError.description
+                } else {
+                    errorAlert = "Unexpected error occurred: \(error.localizedDescription)"
+                }
             }
             isClearingTimestamps = false
         }
