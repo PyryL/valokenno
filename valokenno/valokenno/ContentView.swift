@@ -199,9 +199,9 @@ struct TimestampList: View {
         case .notLoaded:
             EmptyView()
         case .loadingFailed:
-            Text("Failed to load timestamps")
+            failedToLoadView
         case .noTimestamps:
-            Text("No timestamps")
+            noTimestampsView
         case .timestamps(let timestamps):
             timestampList(timestamps: timestamps)
         }
@@ -262,6 +262,24 @@ struct TimestampList: View {
                 }
                 .bold()
             }
+        }
+    }
+
+    private var failedToLoadView: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+
+            Text("Failed to load timestamps")
+        }
+    }
+
+    private var noTimestampsView: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.secondary)
+
+            Text("No timestamps")
         }
     }
 }
