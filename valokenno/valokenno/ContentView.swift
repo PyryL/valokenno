@@ -14,6 +14,7 @@ struct ContentView: View {
 
     @State var isClearConfirmAlertVisible: Bool = false
     @State var isStarterSheetVisible: Bool = false
+    @State var errorAlert: String? = nil
 
     @State var isLoadingTimestamps: Bool = false
     @State var isClearingTimestamps: Bool = false
@@ -53,8 +54,16 @@ struct ContentView: View {
         isLoadingTimestamps = true
 
         Task {
-            if let responseString = await manager.getTimestamps() {
-                try timestampManager.setTimestamps(response: responseString)
+            do {
+                let (timestamps, errorMessage) = try await manager.getTimestamps()
+                timestampManager.setTimestamps(response: timestamps)
+                errorAlert = errorMessage
+            } catch {
+                if let connectionError = error as? ConnectionManager.ConnectionError {
+                    errorAlert = connectionError.description
+                } else {
+                    errorAlert = "Unexpected error occurred: \(error.localizedDescription)"
+                }
             }
             isLoadingTimestamps = false
         }
@@ -68,8 +77,15 @@ struct ContentView: View {
         isClearingTimestamps = true
 
         Task {
-            if await manager.clearTimestamps() {
+            do {
+                try await manager.clearTimestamps()
                 timestampManager.clear()
+            } catch {
+                if let connectionError = error as? ConnectionManager.ConnectionError {
+                    errorAlert = connectionError.description
+                } else {
+                    errorAlert = "Unexpected error occurred: \(error.localizedDescription)"
+                }
             }
             isClearingTimestamps = false
         }
@@ -148,6 +164,18 @@ struct ContentView: View {
                     Text("Clear")
                 }
             }
+            .alert("Error", isPresented: Binding(
+                get: { errorAlert != nil },
+                set: { if !$0 { errorAlert = nil } }
+            )) {
+                Button {
+                    //
+                } label: {
+                    Text("Ok")
+                }
+            } message: {
+                Text(errorAlert ?? "")
+            }
             .fullScreenCover(isPresented: $isStarterSheetVisible) {
                 StarterView(isVisible: $isStarterSheetVisible, connectionManager: manager)
             }
@@ -167,64 +195,91 @@ struct TimestampList: View {
     var deviceIndex: Int
 
     var body: some View {
-        if let timestamps = timestampManager.timestamps(for: deviceIndex) {
-            if timestamps.isEmpty {
-                Text("No timestamps")
-            } else {
-                ForEach(timestamps, id: \.self) { timestamp in
-                    Button {
-                        timestampManager.selectTimestamp(timestamp, device: deviceIndex)
-                    } label: {
-                        ZStack(alignment: .leading) {
-                            Color.white
-                                .opacity(0.000001)
+        switch timestampManager.timestamps(for: deviceIndex) {
+        case .notLoaded:
+            EmptyView()
+        case .loadingFailed:
+            failedToLoadView
+        case .noTimestamps:
+            noTimestampsView
+        case .timestamps(let timestamps):
+            timestampList(timestamps: timestamps)
+        }
+    }
 
-                            HStack {
-                                Image(systemName: "checkmark")
-                                    .opacity(timestamp == timestampManager.selectedTimestamp(for: deviceIndex) ? 1 : 0)
+    private func timestampList(timestamps: [UInt32]) -> some View {
+        Group {
+            ForEach(timestamps, id: \.self) { timestamp in
+                Button {
+                    timestampManager.selectTimestamp(timestamp, device: deviceIndex)
+                } label: {
+                    ZStack(alignment: .leading) {
+                        Color.white
+                            .opacity(0.000001)
 
-                                Text("\(Formatters.formatTimestamp(timestamp))")
-                                    .monospacedDigit()
-                            }
+                        HStack {
+                            Image(systemName: "checkmark")
+                                .opacity(timestamp == timestampManager.selectedTimestamp(for: deviceIndex) ? 1 : 0)
+
+                            Text("\(Formatters.formatTimestamp(timestamp))")
+                                .monospacedDigit()
                         }
                     }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
+            }
 
-                if deviceIndex > 0 {
-                    HStack {
-                        Spacer()
+            if deviceIndex > 0 {
+                HStack {
+                    Spacer()
 
-                        Image(systemName: "sum")
+                    Image(systemName: "sum")
 
-                        if let t0 = timestampManager.selectedTimestamp(for: 0), let t1 = timestampManager.selectedTimestamp(for: deviceIndex), t1 >= t0 {
-                            Text("\(Formatters.formatTimestamp(t1 - t0, digits: 2))")
+                    if let t0 = timestampManager.selectedTimestamp(for: 0), let t1 = timestampManager.selectedTimestamp(for: deviceIndex), t1 >= t0 {
+                        Text("\(Formatters.formatTimestamp(t1 - t0, digits: 2))")
+                            .monospacedDigit()
+                    } else {
+                        Text("-.--")
+                            .monospaced()
+                    }
+
+                    Spacer()
+
+                    Group {
+                        Image(systemName: "chevron.forward.dotted.chevron.forward")
+
+                        if let t1 = timestampManager.selectedTimestamp(for: deviceIndex-1), let t2 = timestampManager.selectedTimestamp(for: deviceIndex), t2 >= t1 {
+                            Text("\(Formatters.formatTimestamp(t2 - t1, digits: 2))")
                                 .monospacedDigit()
                         } else {
                             Text("-.--")
                                 .monospaced()
                         }
-
-                        Spacer()
-
-                        Group {
-                            Image(systemName: "chevron.forward.dotted.chevron.forward")
-
-                            if let t1 = timestampManager.selectedTimestamp(for: deviceIndex-1), let t2 = timestampManager.selectedTimestamp(for: deviceIndex), t2 >= t1 {
-                                Text("\(Formatters.formatTimestamp(t2 - t1, digits: 2))")
-                                    .monospacedDigit()
-                            } else {
-                                Text("-.--")
-                                    .monospaced()
-                            }
-                        }
-                        .opacity(deviceIndex > 1 ? 1.0 : 0.0)
-
-                        Spacer()
                     }
-                    .bold()
+                    .opacity(deviceIndex > 1 ? 1.0 : 0.0)
+
+                    Spacer()
                 }
+                .bold()
             }
+        }
+    }
+
+    private var failedToLoadView: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+
+            Text("Failed to load timestamps")
+        }
+    }
+
+    private var noTimestampsView: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.secondary)
+
+            Text("No timestamps")
         }
     }
 }
@@ -237,22 +292,29 @@ class TimestampManager {
 
     private(set) var deviceCount: Int
 
-    /// The outer array is empty if no data is available, or contains `deviceCount` many subarrays of timestamps.
-    private var timestamps: [[UInt32]] = []
+    /// The outer array is empty if no data is available, or contains `deviceCount` many items.
+    /// The items may either be `nil` if an error occurred during the loading of timestamps,
+    /// or a subarray containing the timestamps.
+    private var timestamps: [[UInt32]?] = []
 
     /// The array is empty if no timestamp data is available.
     /// Whenever `timestamps` is not empty, this array has `deviceCount` values.
     /// `nil` value means no selection.
     private var selectedTimestamps: [UInt32?] = []
 
-    public func setTimestamps(response: String) throws {
-        timestamps = try TimestampParser.parse(response, deviceCount: deviceCount)
-
+    public func setTimestamps(response: [String:[UInt32]]) {
         selectedTimestamps = Array(repeating: nil, count: deviceCount)
+        timestamps = Array(repeating: nil, count: deviceCount)
 
         for i in 0..<deviceCount {
-            if timestamps[i].count == 1 {
-                selectedTimestamps[i] = timestamps[i].first!
+            if let timestampsForDevice = response["dev\(i+1)"] {
+                timestamps[i] = timestampsForDevice
+
+                if timestampsForDevice.count == 1 {
+                    selectedTimestamps[i] = timestampsForDevice.first!
+                }
+            } else {
+                timestamps[i] = nil
             }
         }
     }
@@ -264,11 +326,16 @@ class TimestampManager {
         selectedTimestamps[device] = timestamp
     }
 
-    public func timestamps(for device: Int) -> [UInt32]? {
-        guard timestamps.count == deviceCount, device >= 0, device < deviceCount else {
-            return nil
+    public func timestamps(for device: Int) -> TimestampStatus {
+        guard timestamps.count == deviceCount else {
+            return .notLoaded
         }
-        return timestamps[device]
+
+        guard device >= 0, device < deviceCount, let deviceTimestamps = timestamps[device] else {
+            return .loadingFailed
+        }
+
+        return deviceTimestamps.isEmpty ? .noTimestamps : .timestamps(deviceTimestamps)
     }
 
     public func selectedTimestamp(for device: Int) -> UInt32? {
@@ -282,11 +349,15 @@ class TimestampManager {
         timestamps = []
         selectedTimestamps = []
     }
+
+    enum TimestampStatus {
+        case timestamps([UInt32]), noTimestamps, notLoaded, loadingFailed
+    }
 }
 
 #Preview {
     let timestampManager = TimestampManager(deviceCount: 3)
-    try? timestampManager.setTimestamps(response: "dev1,10000,15000;dev2,12000,17000;dev3,16000,20000")
+    timestampManager.setTimestamps(response: ["dev1": [10000, 15000], "dev2": [12000, 17000], "dev3": [16000, 20000]])
 
     return ContentView(timestampManager: timestampManager)
 }

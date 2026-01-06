@@ -17,6 +17,8 @@ volatile bool has_pending_request = false;
 
 std::vector<unsigned long> motion_timestamps = {};
 
+const int MAX_RESPONSE_LEN = (256 < ESP_NOW_MAX_DATA_LEN) ? 256 : ESP_NOW_MAX_DATA_LEN;
+
 void blink(int count, bool is_error) {
   for (int i=0; i<count; i++) {
     if (is_error) {
@@ -40,8 +42,6 @@ void blink(int count, bool is_error) {
 }
 
 void send_response(uint8_t *response, int response_len) {
-  const int MAX_RESPONSE_LEN = (256 < ESP_NOW_MAX_DATA_LEN) ? 256 : ESP_NOW_MAX_DATA_LEN;
-
   if (response_len > MAX_RESPONSE_LEN) {
     Serial.println("Tried to send too long response");
     return;
@@ -130,17 +130,20 @@ void handle_clock_sync(const uint8_t *request) {
 void handle_motion_timestamp_request() {
   Serial.println("Received motion timestamps request");
 
-  int response_len = 4 + 4 * motion_timestamps.size();
-  uint8_t response[256];
-
-  if (response_len > 256) {
-    Serial.println("Too many timestamps to send");
-    return;
+  // calculate how many timestamps fit in the response
+  int timestamps_send_count = motion_timestamps.size();
+  int max_send_count = (MAX_RESPONSE_LEN - 4) / 4;
+  if (timestamps_send_count > max_send_count) {
+    Serial.println("Too many timestamps to be able to send them all");
+    timestamps_send_count = max_send_count;
   }
+
+  int response_len = 4 + 4 * timestamps_send_count;
+  uint8_t response[MAX_RESPONSE_LEN];
 
   memcpy(response, pending_request, 4); // request id
 
-  for (int i=0; i<motion_timestamps.size(); i++) {
+  for (int i=0; i<timestamps_send_count; i++) {
     int32_to_bytes((uint32_t)motion_timestamps[i], response + (4 + 4 * i));
   }
 
