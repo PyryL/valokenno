@@ -254,6 +254,96 @@ void handle_ap_starter_request() {
 #endif
 
 
+void handle_timestamp_process() {
+  switchToEspNow();
+
+  String timestamp_data = "\"dev1\":[";
+  for (unsigned long timestamp : motion_timestamps) {
+    timestamp_data += String(timestamp) + ",";
+  }
+  if (!motion_timestamps.empty()) {
+    timestamp_data.remove(timestamp_data.length() - 1);
+  }
+  timestamp_data += "]";
+
+  int errored_slave_indices[MAX_SLAVE_COUNT] = {};
+  int errored_slave_indices_len = 0;
+
+  for (int slave_index=0; slave_index<slave_count; slave_index++) {
+    uint8_t message_type[3] = {'t', 'i', 'm'};
+    uint8_t slave_response[256];
+    int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
+
+    if (slave_response_len < 0 || slave_response_len % 4 != 0) {
+      Serial.printf("Slave %d timestamp response failed\n", slave_index);
+      errored_slave_indices[errored_slave_indices_len] = slave_index;
+      errored_slave_indices_len++;
+    } else {
+      timestamp_data += ",\"dev" + String(slave_index + 2) + "\":[";
+      int timestamp_count = slave_response_len / 4;
+      for (int i=0; i<timestamp_count; i++) {
+        unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
+        unsigned long unshifted_timestamp = (unsigned long)((long)slave_timestamp - slave_clock_offsets[slave_index]);
+        timestamp_data += String(unshifted_timestamp) + ",";
+      }
+      if (timestamp_count > 0) {
+        timestamp_data.remove(timestamp_data.length() - 1);
+      }
+      timestamp_data += "]";
+    }
+  }
+
+  String error_message = "";
+  if (errored_slave_indices_len > 0) {
+    error_message = "Slave";
+    if (errored_slave_indices_len > 1) {
+      error_message += "s";
+    }
+    error_message += " ";
+    for (int i=0; i<errored_slave_indices_len; i++) {
+      error_message += String(errored_slave_indices[i] + 1) + ", ";
+    }
+    error_message.remove(error_message.length() - 2, 2);
+    error_message += " failed to respond.";
+  }
+
+  timestamp_response = "{\"timestamps\":{" + timestamp_data + "},\"error\":\"" + error_message + "\"}";
+
+  switchToApMode();
+  Serial.println("Timestamp response: " + timestamp_response);
+  pending_timestamp_process = false;
+}
+
+void handle_clear_process() {
+  switchToEspNow();
+
+  int failed_slave_index = -1;
+
+  for (int slave_index=0; slave_index<slave_count; slave_index++) {
+    uint8_t message_type[3] = {'c', 'l', 'e'};
+    uint8_t slave_response[256];
+    int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
+
+    if (slave_response_len != 2 || slave_response[0] != 'o' || slave_response[1] != 'k') {
+      Serial.printf("Clearing slave %d failed\n", slave_index);
+      failed_slave_index = slave_index;
+      break;
+    }
+  }
+
+  if (failed_slave_index < 0) {
+    motion_timestamps.clear();
+    clear_process_response = "{\"success\":true,\"error\":\"\"}";
+  } else {
+    clear_process_response = "{\"success\":false,\"error\":\"Slave " + String(failed_slave_index+1) + " failed to clear.\"}";
+  }
+
+  switchToApMode();
+  Serial.println("Clear process response: " + clear_process_response);
+  pending_clear_process = false;
+}
+
+
 void setup_communications() {
   ap_server.on("/status", HTTP_GET, handle_ap_status_request);
   ap_server.on("/timestamps", HTTP_GET, handle_ap_timestamp_request);
@@ -276,91 +366,11 @@ void loop_communications() {
   }
 
   if (pending_timestamp_process) {
-    switchToEspNow();
-
-    String timestamp_data = "\"dev1\":[";
-    for (unsigned long timestamp : motion_timestamps) {
-      timestamp_data += String(timestamp) + ",";
-    }
-    if (!motion_timestamps.empty()) {
-      timestamp_data.remove(timestamp_data.length() - 1);
-    }
-    timestamp_data += "]";
-
-    int errored_slave_indices[MAX_SLAVE_COUNT] = {};
-    int errored_slave_indices_len = 0;
-
-    for (int slave_index=0; slave_index<slave_count; slave_index++) {
-      uint8_t message_type[3] = {'t', 'i', 'm'};
-      uint8_t slave_response[256];
-      int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
-
-      if (slave_response_len < 0 || slave_response_len % 4 != 0) {
-        Serial.printf("Slave %d timestamp response failed\n", slave_index);
-        errored_slave_indices[errored_slave_indices_len] = slave_index;
-        errored_slave_indices_len++;
-      } else {
-        timestamp_data += ",\"dev" + String(slave_index + 2) + "\":[";
-        int timestamp_count = slave_response_len / 4;
-        for (int i=0; i<timestamp_count; i++) {
-          unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
-          unsigned long unshifted_timestamp = (unsigned long)((long)slave_timestamp - slave_clock_offsets[slave_index]);
-          timestamp_data += String(unshifted_timestamp) + ",";
-        }
-        if (timestamp_count > 0) {
-          timestamp_data.remove(timestamp_data.length() - 1);
-        }
-        timestamp_data += "]";
-      }
-    }
-
-    String error_message = "";
-    if (errored_slave_indices_len > 0) {
-      error_message = "Slave";
-      if (errored_slave_indices_len > 1) {
-        error_message += "s";
-      }
-      error_message += " ";
-      for (int i=0; i<errored_slave_indices_len; i++) {
-        error_message += String(errored_slave_indices[i] + 1) + ", ";
-      }
-      error_message.remove(error_message.length() - 2, 2);
-      error_message += " failed to respond.";
-    }
-
-    timestamp_response = "{\"timestamps\":{" + timestamp_data + "},\"error\":\"" + error_message + "\"}";
-
-    switchToApMode();
-    Serial.println("Timestamp response: " + timestamp_response);
-    pending_timestamp_process = false;
+    handle_timestamp_process();
   }
 
   if (pending_clear_process) {
-    switchToEspNow();
-
-    int failed_slave_index = -1;
-
-    for (int slave_index=0; slave_index<slave_count; slave_index++) {
-      uint8_t message_type[3] = {'c', 'l', 'e'};
-      uint8_t slave_response[256];
-      int slave_response_len = send_message(slave_index, message_type, nullptr, 0, slave_response);
-
-      if (slave_response_len != 2 || slave_response[0] != 'o' || slave_response[1] != 'k') {
-        Serial.printf("Clearing slave %d failed\n", slave_index);
-        failed_slave_index = slave_index;
-        break;
-      }
-    }
-    if (failed_slave_index < 0) {
-      motion_timestamps.clear();
-      clear_process_response = "{\"success\":true,\"error\":\"\"}";
-    } else {
-      clear_process_response = "{\"success\":false,\"error\":\"Slave " + String(failed_slave_index+1) + " failed to clear.\"}";
-    }
-
-    switchToApMode();
-    Serial.println("Clear process response: " + clear_process_response);
-    pending_clear_process = false;
+    handle_clear_process();
   }
 }
 
