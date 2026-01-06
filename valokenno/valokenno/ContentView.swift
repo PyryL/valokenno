@@ -286,6 +286,7 @@ class TimestampManager {
 
     public func setTimestamps(response: [String:[UInt32]]) {
         selectedTimestamps = Array(repeating: nil, count: deviceCount)
+        timestamps = Array(repeating: nil, count: deviceCount)
 
         for i in 0..<deviceCount {
             if let timestampsForDevice = response["dev\(i+1)"] {
