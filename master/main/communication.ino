@@ -316,7 +316,10 @@ void handle_timestamp_process() {
 void handle_clear_process() {
   switchToEspNow();
 
-  int failed_slave_index = -1;
+  motion_timestamps.clear();
+
+  int errored_slave_indices[MAX_SLAVE_COUNT] = {};
+  int errored_slave_indices_len = 0;
 
   for (int slave_index=0; slave_index<slave_count; slave_index++) {
     uint8_t message_type[3] = {'c', 'l', 'e'};
@@ -325,23 +328,31 @@ void handle_clear_process() {
 
     if (slave_response_len != 2 || slave_response[0] != 'o' || slave_response[1] != 'k') {
       Serial.printf("Clearing slave %d failed\n", slave_index);
-      failed_slave_index = slave_index;
-      break;
+      errored_slave_indices[errored_slave_indices_len] = slave_index;
+      errored_slave_indices_len++;
     }
   }
 
-  if (failed_slave_index < 0) {
-    motion_timestamps.clear();
-
+  if (errored_slave_indices_len == 0) {
     JsonDocument response;
     response["success"] = true;
     response["error"] = "";
-
     serializeJson(response, clear_process_response);
   } else {
+    String error_message = "Slave";
+    if (errored_slave_indices_len > 1) {
+      error_message += "s";
+    }
+    error_message += " ";
+    for (int i=0; i<errored_slave_indices_len; i++) {
+      error_message += String(errored_slave_indices[i] + 1) + ", ";
+    }
+    error_message.remove(error_message.length() - 2, 2);
+    error_message += " failed to respond.";
+
     JsonDocument response;
     response["success"] = false;
-    response["error"] = "Slave " + String(failed_slave_index + 1) + " failed to clear.";
+    response["error"] = error_message;
 
     serializeJson(response, clear_process_response);
   }
