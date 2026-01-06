@@ -1,5 +1,6 @@
 #include <WebServer.h>
 #include "esp_wifi.h"
+#include <ArduinoJson.h>
 
 enum RadioMode {
   ESP_NOW_MODE,
@@ -257,14 +258,13 @@ void handle_ap_starter_request() {
 void handle_timestamp_process() {
   switchToEspNow();
 
-  String timestamp_data = "\"dev1\":[";
+  JsonDocument response;
+  JsonObject response_timestamps = response["timestamps"].to<JsonObject>();
+
+  JsonArray timestamps_dev1 = response_timestamps["dev1"].to<JsonArray>();
   for (unsigned long timestamp : motion_timestamps) {
-    timestamp_data += String(timestamp) + ",";
+    timestamps_dev1.add(timestamp);
   }
-  if (!motion_timestamps.empty()) {
-    timestamp_data.remove(timestamp_data.length() - 1);
-  }
-  timestamp_data += "]";
 
   int errored_slave_indices[MAX_SLAVE_COUNT] = {};
   int errored_slave_indices_len = 0;
@@ -279,17 +279,14 @@ void handle_timestamp_process() {
       errored_slave_indices[errored_slave_indices_len] = slave_index;
       errored_slave_indices_len++;
     } else {
-      timestamp_data += ",\"dev" + String(slave_index + 2) + "\":[";
+      JsonArray timestamps_devn = response_timestamps["dev" + String(slave_index + 2)].to<JsonArray>();
+
       int timestamp_count = slave_response_len / 4;
       for (int i=0; i<timestamp_count; i++) {
         unsigned long slave_timestamp = bytes_to_int32(slave_response + (4 * i));
         unsigned long unshifted_timestamp = (unsigned long)((long)slave_timestamp - slave_clock_offsets[slave_index]);
-        timestamp_data += String(unshifted_timestamp) + ",";
+        timestamps_devn.add(unshifted_timestamp);
       }
-      if (timestamp_count > 0) {
-        timestamp_data.remove(timestamp_data.length() - 1);
-      }
-      timestamp_data += "]";
     }
   }
 
@@ -307,7 +304,9 @@ void handle_timestamp_process() {
     error_message += " failed to respond.";
   }
 
-  timestamp_response = "{\"timestamps\":{" + timestamp_data + "},\"error\":\"" + error_message + "\"}";
+  response["error"] = error_message;
+
+  serializeJson(response, timestamp_response);
 
   switchToApMode();
   Serial.println("Timestamp response: " + timestamp_response);
@@ -333,9 +332,18 @@ void handle_clear_process() {
 
   if (failed_slave_index < 0) {
     motion_timestamps.clear();
-    clear_process_response = "{\"success\":true,\"error\":\"\"}";
+
+    JsonDocument response;
+    response["success"] = true;
+    response["error"] = "";
+
+    serializeJson(response, clear_process_response);
   } else {
-    clear_process_response = "{\"success\":false,\"error\":\"Slave " + String(failed_slave_index+1) + " failed to clear.\"}";
+    JsonDocument response;
+    response["success"] = false;
+    response["error"] = "Slave " + String(failed_slave_index + 1) + " failed to clear.";
+
+    serializeJson(response, clear_process_response);
   }
 
   switchToApMode();
