@@ -6,23 +6,31 @@
 //
 
 import Foundation
+import Network
+import NetworkExtension
 
 class ConnectionManager {
     private let baseUrl = "http://192.168.4.1"
-
-    private let urlSession: URLSession
-
-    init() {
-        urlSession = URLSession(configuration: .ephemeral)
-        urlSession.configuration.timeoutIntervalForRequest = 2.0
-    }
+    private let valokennoSSID = "Valokenno"
 
     public func checkConnection() async -> Bool {
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
+            return false
+        }
+
         guard let url = URL(string: "\(baseUrl)/status") else {
             return false
         }
 
-        guard let (data, response) = try? await urlSession.data(from: url) else {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2.0
+        let session = URLSession(configuration: sessionConfig)
+
+        defer {
+            session.invalidateAndCancel()
+        }
+
+        guard let (data, response) = try? await session.data(from: url) else {
             return false
         }
 
@@ -38,25 +46,64 @@ class ConnectionManager {
     }
 
     public func getTimestamps() async throws -> ([String:[UInt32]], String?) {
+        // check that connected at the beginning
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
+            throw ConnectionError.initiallyNotConnectedToWifi
+        }
+
         guard let startUrl = URL(string: "\(baseUrl)/timestamps"),
               let resultUrl = URL(string: "\(baseUrl)/timestamps/result") else {
 
             throw ConnectionError.couldNotStartProcess
         }
 
-        guard let (_, response) = try? await urlSession.data(from: startUrl) else {
-            throw ConnectionError.couldNotStartProcess
+        // this do block is used to defer the session before entering the retry loop below
+        do {
+            let sessionConfig = URLSessionConfiguration.ephemeral
+            sessionConfig.timeoutIntervalForRequest = 2.0
+            let session = URLSession(configuration: sessionConfig)
+
+            defer {
+                session.invalidateAndCancel()
+            }
+
+            guard let (_, response) = try? await session.data(from: startUrl) else {
+                throw ConnectionError.couldNotStartProcess
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                throw ConnectionError.couldNotStartProcess
+            }
         }
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw ConnectionError.couldNotStartProcess
+        try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+
+        // if not connected, wait until connected
+        guard await waitForNetworkRestore() else {
+            throw ConnectionError.couldNotReconnectToWifi
         }
 
+        // with 5 retries, try to get the results from device
+        for i in 0..<5 {
+            if i > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            // if we lose connection during requests, wait until the connection restores
+            guard await waitForNetworkRestore(timeout: 5.0) else {
+                throw ConnectionError.couldNotReconnectToWifi
+            }
 
-            guard let (data, response) = try? await urlSession.data(from: resultUrl) else {
+            // allow slightly longer timeouts for each request
+            let sessionConfig = URLSessionConfiguration.ephemeral
+            sessionConfig.timeoutIntervalForRequest = 1.0 + Double(i)
+            let session = URLSession(configuration: sessionConfig)
+
+            defer {
+                session.invalidateAndCancel()
+            }
+
+            guard let (data, response) = try? await session.data(from: resultUrl) else {
                 continue
             }
 
@@ -80,25 +127,62 @@ class ConnectionManager {
     }
 
     public func clearTimestamps() async throws {
+        // check that connected at the beginning
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
+            throw ConnectionError.initiallyNotConnectedToWifi
+        }
+
         guard let startUrl = URL(string: "\(baseUrl)/clear"),
               let resultUrl = URL(string: "\(baseUrl)/clear/result") else {
 
             throw ConnectionError.couldNotStartProcess
         }
 
-        guard let (_, response) = try? await urlSession.data(from: startUrl) else {
-            throw ConnectionError.couldNotStartProcess
+        // use do block to defer session before entering the retry loop below
+        do {
+            let sessionConfig = URLSessionConfiguration.ephemeral
+            sessionConfig.timeoutIntervalForRequest = 2.0
+            let session = URLSession(configuration: sessionConfig)
+
+            defer {
+                session.invalidateAndCancel()
+            }
+
+            guard let (_, response) = try? await session.data(from: startUrl) else {
+                throw ConnectionError.couldNotStartProcess
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                throw ConnectionError.couldNotStartProcess
+            }
         }
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw ConnectionError.couldNotStartProcess
+        try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+
+        // if not connected, wait until connected
+        guard await waitForNetworkRestore() else {
+            throw ConnectionError.couldNotReconnectToWifi
         }
 
+        for i in 0..<5 {
+            if i > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            // if we lose connection during requests, wait until the connection restores
+            guard await waitForNetworkRestore(timeout: 5.0) else {
+                throw ConnectionError.couldNotReconnectToWifi
+            }
 
-            guard let (data, response) = try? await urlSession.data(from: resultUrl) else {
+            let sessionConfig = URLSessionConfiguration.ephemeral
+            sessionConfig.timeoutIntervalForRequest = 1.0 + Double(i)
+            let session = URLSession(configuration: sessionConfig)
+
+            defer {
+                session.invalidateAndCancel()
+            }
+
+            guard let (data, response) = try? await session.data(from: resultUrl) else {
                 continue
             }
 
@@ -129,11 +213,24 @@ class ConnectionManager {
     }
 
     public func activateStarter() async throws {
+        // check that connected to wifi
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
+            throw ConnectionError.initiallyNotConnectedToWifi
+        }
+
         guard let url = URL(string: "\(baseUrl)/starter") else {
             throw ConnectionError.couldNotStartProcess
         }
 
-        guard let (data, response) = try? await urlSession.data(from: url) else {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2.0
+        let session = URLSession(configuration: sessionConfig)
+
+        defer {
+            session.invalidateAndCancel()
+        }
+
+        guard let (data, response) = try? await session.data(from: url) else {
             throw ConnectionError.couldNotStartProcess
         }
 
@@ -147,7 +244,7 @@ class ConnectionManager {
     }
 
     enum ConnectionError: Error {
-        case invalidResponseFormat, couldNotStartProcess, couldNotReceiveResponseInTime, masterReportedError(String)
+        case invalidResponseFormat, couldNotStartProcess, couldNotReceiveResponseInTime, initiallyNotConnectedToWifi, couldNotReconnectToWifi, masterReportedError(String)
 
         var description: String {
             switch self {
@@ -157,9 +254,80 @@ class ConnectionManager {
                 "Could not connect the master device to initialize the action"
             case .couldNotReceiveResponseInTime:
                 "Master device did not respond in time"
+            case .initiallyNotConnectedToWifi:
+                "Could not initialize the action due to not being connected to WiFi"
+            case .couldNotReconnectToWifi:
+                "Could not reconnect to WiFi to finish the action"
             case .masterReportedError(let message):
                 message
             }
         }
+    }
+
+    /// Returns once the phone is connected to the Valokenno Wi-Fi (returning true), or after the timeout (returning false).
+    private func waitForNetworkRestore(timeout: Double = 10.0) async -> Bool {
+        return await withCheckedContinuation { cont in
+            let monitor = NWPathMonitor()
+            let queue = DispatchQueue(label: "info.pyry.apps.valokenno.ConnectionManager.waitForNetworkRestore")
+
+            let lock = NSLock()
+            var hasResumed = false
+
+            let resume = { result in
+                lock.lock()
+
+                if !hasResumed {
+                    hasResumed = true
+                    cont.resume(returning: result)
+                }
+
+                lock.unlock()
+            }
+
+            let timeoutItem = DispatchWorkItem {
+                monitor.cancel()
+                resume(false)
+            }
+
+            monitor.pathUpdateHandler = { path in
+                Task.detached {
+                    if path.status == .satisfied,
+                       path.usesInterfaceType(.wifi),
+                       await self.isCurrentNetworkValokennoWiFi(isAfterReconnect: true) {
+
+                        timeoutItem.cancel()
+                        monitor.cancel()
+                        resume(true)
+                    }
+                }
+            }
+
+            monitor.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
+        }
+    }
+
+    /// - Parameter isAfterReconnect: Pass `true` if the phone has just rejoined the network, `false` otherwise.
+    /// - Returns: `true` if the currently connected network is the Valokenno WiFi. Otherwise returns `false`.
+    private func isCurrentNetworkValokennoWiFi(isAfterReconnect: Bool) async -> Bool {
+        let maxAttempts = isAfterReconnect ? 3 : 1
+
+        for i in 0..<maxAttempts {
+            let ssid = await withCheckedContinuation { cont in
+                NEHotspotNetwork.fetchCurrent { network in
+                    cont.resume(returning: network?.ssid)
+                }
+            }
+
+            if ssid == self.valokennoSSID {
+                return true
+            }
+
+            if i < maxAttempts - 1 {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            }
+        }
+
+        return false
     }
 }
