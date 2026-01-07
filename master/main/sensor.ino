@@ -1,3 +1,5 @@
+// this entire sensor.ini file is wrapped in this conditional
+#ifdef MASTER_TYPE_SENSOR
 
 #define MOTION_DETECTION_MAX_THRESHOLD 100 // centimeters
 
@@ -128,3 +130,5 @@ void loop_sensor() {
 
   last_sensor_timestamp = timestamp;
 }
+
+#endif

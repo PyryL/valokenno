@@ -40,16 +40,16 @@ class ConnectionManager {
         return string == "Valokenno toiminnassa"
     }
 
-    public func getTimestamps() async -> String? {
+    public func getTimestamps() async throws -> ([String:[UInt32]], String?) {
         // check that connected at the beginning
         guard let ssid = await getCurrentWiFiSSID(), ssid == valokennoSSID else {
-            return nil
+            throw ConnectionError.todoError
         }
 
         guard let startUrl = URL(string: "\(baseUrl)/timestamps"),
               let resultUrl = URL(string: "\(baseUrl)/timestamps/result") else {
 
-            return nil
+            throw ConnectionError.couldNotStartProcess
         }
 
         let sessionConfig = URLSessionConfiguration.ephemeral
@@ -57,33 +57,29 @@ class ConnectionManager {
         let session = URLSession(configuration: sessionConfig)
 
         guard let (_, response) = try? await session.data(from: startUrl) else {
-            return nil
+            throw ConnectionError.couldNotStartProcess
         }
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            return nil
+            throw ConnectionError.couldNotStartProcess
         }
 
         try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
 
         // if not connected, wait until connected
         guard await waitForNetworkRestore() else {
-            return nil
+            throw ConnectionError.todoError
         }
 
         // with 10 retries, try to get the results from device
         for i in 0..<10 {
             if i > 0 {
-                do {
-                    try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-                } catch {
-                    return nil
-                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
             }
 
             // if we lose connection during requests, wait until the connection restores
             guard await waitForNetworkRestore() else {
-                return nil
+                throw ConnectionError.todoError
             }
 
             // allow slightly longer timeouts for each request
@@ -99,38 +95,39 @@ class ConnectionManager {
                 continue
             }
 
-            guard let string = String(data: data, encoding: .utf8) else {
-                continue
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String:Any],
+                  let timestamps = object["timestamps"] as? [String:[UInt32]],
+                  let errorMessage = object["error"] as? String else {
+
+                throw ConnectionError.invalidResponseFormat
             }
 
-            return string
+            let optionalErrorMessage = errorMessage.isEmpty ? nil : errorMessage
+
+            return (timestamps, optionalErrorMessage)
         }
 
-        return nil
+        throw ConnectionError.couldNotReceiveResponseInTime
     }
 
-    public func clearTimestamps() async -> Bool {
+    public func clearTimestamps() async throws {
         guard let startUrl = URL(string: "\(baseUrl)/clear"),
               let resultUrl = URL(string: "\(baseUrl)/clear/result") else {
 
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
         guard let (_, response) = try? await urlSession.data(from: startUrl) else {
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            return false
+            throw ConnectionError.couldNotStartProcess
         }
 
 
         for _ in 0..<5 {
-            do {
-                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-            } catch {
-                return false
-            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
 
             guard let (data, response) = try? await urlSession.data(from: resultUrl) else {
                 continue
@@ -140,14 +137,61 @@ class ConnectionManager {
                 continue
             }
 
-            guard let string = String(data: data, encoding: .utf8) else {
-                continue
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String:Any],
+                  let success = object["success"] as? Bool,
+                  let errorMessage = object["error"] as? String else {
+
+                throw ConnectionError.invalidResponseFormat
             }
 
-            return string == "ok"
+            if !errorMessage.isEmpty {
+                throw ConnectionError.masterReportedError(errorMessage)
+            }
+
+            guard success else {
+                // if success is false, error message should be provided
+                throw ConnectionError.invalidResponseFormat
+            }
+
+            return
         }
 
-        return false
+        throw ConnectionError.couldNotReceiveResponseInTime
+    }
+
+    public func activateStarter() async throws {
+        guard let url = URL(string: "\(baseUrl)/starter") else {
+            throw ConnectionError.couldNotStartProcess
+        }
+
+        guard let (data, response) = try? await urlSession.data(from: url) else {
+            throw ConnectionError.couldNotStartProcess
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw ConnectionError.invalidResponseFormat
+        }
+
+        guard let string = String(data: data, encoding: .utf8), string == "ok" else {
+            throw ConnectionError.invalidResponseFormat
+        }
+    }
+
+    enum ConnectionError: Error {
+        case invalidResponseFormat, couldNotStartProcess, couldNotReceiveResponseInTime, masterReportedError(String), todoError
+
+        var description: String {
+            switch self {
+            case .invalidResponseFormat:
+                "Master device responded in invalid format"
+            case .couldNotStartProcess:
+                "Could not connect the master device to initialize the action"
+            case .couldNotReceiveResponseInTime:
+                "Master device did not respond in time"
+            case .masterReportedError(let message):
+                message
+            }
+        }
     }
 
     /// Returns once the phone is connected to the Valokenno Wi-Fi (returning true), of after the timeout of 10 seconds (returning false).
