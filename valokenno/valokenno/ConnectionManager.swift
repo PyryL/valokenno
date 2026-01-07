@@ -42,8 +42,8 @@ class ConnectionManager {
 
     public func getTimestamps() async throws -> ([String:[UInt32]], String?) {
         // check that connected at the beginning
-        guard let ssid = await getCurrentWiFiSSID(), ssid == valokennoSSID else {
-            throw ConnectionError.todoError
+        guard await isCurrentNetworkValokennoWiFi() else {
+            throw ConnectionError.initiallyNotConnectedToWifi
         }
 
         guard let startUrl = URL(string: "\(baseUrl)/timestamps"),
@@ -68,18 +68,18 @@ class ConnectionManager {
 
         // if not connected, wait until connected
         guard await waitForNetworkRestore() else {
-            throw ConnectionError.todoError
+            throw ConnectionError.couldNotReconnectToWifi
         }
 
-        // with 10 retries, try to get the results from device
-        for i in 0..<10 {
+        // with 5 retries, try to get the results from device
+        for i in 0..<5 {
             if i > 0 {
                 try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
             }
 
             // if we lose connection during requests, wait until the connection restores
-            guard await waitForNetworkRestore() else {
-                throw ConnectionError.todoError
+            guard await waitForNetworkRestore(timeout: 5.0) else {
+                throw ConnectionError.couldNotReconnectToWifi
             }
 
             // allow slightly longer timeouts for each request
@@ -178,7 +178,7 @@ class ConnectionManager {
     }
 
     enum ConnectionError: Error {
-        case invalidResponseFormat, couldNotStartProcess, couldNotReceiveResponseInTime, masterReportedError(String), todoError
+        case invalidResponseFormat, couldNotStartProcess, couldNotReceiveResponseInTime, initiallyNotConnectedToWifi, couldNotReconnectToWifi, masterReportedError(String)
 
         var description: String {
             switch self {
@@ -188,14 +188,18 @@ class ConnectionManager {
                 "Could not connect the master device to initialize the action"
             case .couldNotReceiveResponseInTime:
                 "Master device did not respond in time"
+            case .initiallyNotConnectedToWifi:
+                "Could not initialize the action due to not being connected to WiFi"
+            case .couldNotReconnectToWifi:
+                "Could not reconnect to WiFi to finish the action"
             case .masterReportedError(let message):
                 message
             }
         }
     }
 
-    /// Returns once the phone is connected to the Valokenno Wi-Fi (returning true), of after the timeout of 10 seconds (returning false).
-    private func waitForNetworkRestore() async -> Bool {
+    /// Returns once the phone is connected to the Valokenno Wi-Fi (returning true), or after the timeout (returning false).
+    private func waitForNetworkRestore(timeout: Double = 10.0) async -> Bool {
         return await withCheckedContinuation { cont in
             let monitor = NWPathMonitor()
             let queue = DispatchQueue(label: "info.pyry.apps.valokenno.ConnectionManager.waitForNetworkRestore")
@@ -223,8 +227,7 @@ class ConnectionManager {
                 Task {
                     if path.status == .satisfied,
                        path.usesInterfaceType(.wifi),
-                       let ssid = await self.getCurrentWiFiSSID(),
-                       ssid == self.valokennoSSID {
+                       await self.isCurrentNetworkValokennoWiFi() {
 
                         timeoutItem.cancel()
                         monitor.cancel()
@@ -234,19 +237,30 @@ class ConnectionManager {
             }
 
             monitor.start(queue: queue)
-            queue.asyncAfter(deadline: .now() + 10, execute: timeoutItem) // 10 sec timeout
+            queue.asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
         }
     }
 
-    private func getCurrentWiFiSSID() async -> String? {
-        return await withCheckedContinuation { cont in
-            NEHotspotNetwork.fetchCurrent { network in
-                if let network {
-                    cont.resume(returning: network.ssid)
-                } else {
-                    cont.resume(returning: nil)
+    /// Returns `true` if the currently connected network is the Valokenno WiFi. Otherwise returns `false`.
+    private func isCurrentNetworkValokennoWiFi() async -> Bool {
+        let maxAttempts = 3
+
+        for i in 0..<maxAttempts {
+            let ssid = await withCheckedContinuation { cont in
+                NEHotspotNetwork.fetchCurrent { network in
+                    cont.resume(returning: network?.ssid)
                 }
             }
+
+            if ssid == self.valokennoSSID {
+                return true
+            }
+
+            if i < maxAttempts - 1 {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            }
         }
+
+        return false
     }
 }
