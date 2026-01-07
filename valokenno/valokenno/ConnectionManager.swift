@@ -14,6 +14,10 @@ class ConnectionManager {
     private let valokennoSSID = "Valokenno"
 
     public func checkConnection() async -> Bool {
+        guard await isCurrentNetworkValokennoWiFi() else {
+            return false
+        }
+
         guard let url = URL(string: "\(baseUrl)/status") else {
             return false
         }
@@ -108,6 +112,11 @@ class ConnectionManager {
     }
 
     public func clearTimestamps() async throws {
+        // check that connected at the beginning
+        guard await isCurrentNetworkValokennoWiFi() else {
+            throw ConnectionError.initiallyNotConnectedToWifi
+        }
+
         guard let startUrl = URL(string: "\(baseUrl)/clear"),
               let resultUrl = URL(string: "\(baseUrl)/clear/result") else {
 
@@ -126,9 +135,26 @@ class ConnectionManager {
             throw ConnectionError.couldNotStartProcess
         }
 
+        try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        // if not connected, wait until connected
+        guard await waitForNetworkRestore() else {
+            throw ConnectionError.couldNotReconnectToWifi
+        }
+
+        for i in 0..<5 {
+            if i > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            }
+
+            // if we lose connection during requests, wait until the connection restores
+            guard await waitForNetworkRestore(timeout: 5.0) else {
+                throw ConnectionError.couldNotReconnectToWifi
+            }
+
+            let sessionConfig = URLSessionConfiguration.ephemeral
+            sessionConfig.timeoutIntervalForRequest = 1.0 + Double(i)
+            let session = URLSession(configuration: sessionConfig)
 
             guard let (data, response) = try? await session.data(from: resultUrl) else {
                 continue
@@ -161,6 +187,11 @@ class ConnectionManager {
     }
 
     public func activateStarter() async throws {
+        // check that connected to wifi
+        guard await isCurrentNetworkValokennoWiFi() else {
+            throw ConnectionError.initiallyNotConnectedToWifi
+        }
+
         guard let url = URL(string: "\(baseUrl)/starter") else {
             throw ConnectionError.couldNotStartProcess
         }
