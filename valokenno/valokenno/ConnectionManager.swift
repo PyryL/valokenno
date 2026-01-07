@@ -26,6 +26,10 @@ class ConnectionManager {
         sessionConfig.timeoutIntervalForRequest = 2.0
         let session = URLSession(configuration: sessionConfig)
 
+        defer {
+            session.invalidateAndCancel()
+        }
+
         guard let (data, response) = try? await session.data(from: url) else {
             return false
         }
@@ -53,16 +57,23 @@ class ConnectionManager {
             throw ConnectionError.couldNotStartProcess
         }
 
-        let sessionConfig = URLSessionConfiguration.ephemeral
-        sessionConfig.timeoutIntervalForRequest = 1.0
-        let session = URLSession(configuration: sessionConfig)
+        // this do block is used to defer the session before entering the retry loop below
+        do {
+            let sessionConfig = URLSessionConfiguration.ephemeral
+            sessionConfig.timeoutIntervalForRequest = 1.0
+            let session = URLSession(configuration: sessionConfig)
 
-        guard let (_, response) = try? await session.data(from: startUrl) else {
-            throw ConnectionError.couldNotStartProcess
-        }
+            defer {
+                session.invalidateAndCancel()
+            }
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw ConnectionError.couldNotStartProcess
+            guard let (_, response) = try? await session.data(from: startUrl) else {
+                throw ConnectionError.couldNotStartProcess
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                throw ConnectionError.couldNotStartProcess
+            }
         }
 
         try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
@@ -87,6 +98,10 @@ class ConnectionManager {
             let sessionConfig = URLSessionConfiguration.ephemeral
             sessionConfig.timeoutIntervalForRequest = 1.0 + Double(i)
             let session = URLSession(configuration: sessionConfig)
+
+            defer {
+                session.invalidateAndCancel()
+            }
 
             guard let (data, response) = try? await session.data(from: resultUrl) else {
                 continue
@@ -123,16 +138,23 @@ class ConnectionManager {
             throw ConnectionError.couldNotStartProcess
         }
 
-        let sessionConfig = URLSessionConfiguration.ephemeral
-        sessionConfig.timeoutIntervalForRequest = 2.0
-        let session = URLSession(configuration: sessionConfig)
+        // use do block to defer session before entering the retry loop below
+        do {
+            let sessionConfig = URLSessionConfiguration.ephemeral
+            sessionConfig.timeoutIntervalForRequest = 2.0
+            let session = URLSession(configuration: sessionConfig)
 
-        guard let (_, response) = try? await session.data(from: startUrl) else {
-            throw ConnectionError.couldNotStartProcess
-        }
+            defer {
+                session.invalidateAndCancel()
+            }
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw ConnectionError.couldNotStartProcess
+            guard let (_, response) = try? await session.data(from: startUrl) else {
+                throw ConnectionError.couldNotStartProcess
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                throw ConnectionError.couldNotStartProcess
+            }
         }
 
         try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
@@ -155,6 +177,10 @@ class ConnectionManager {
             let sessionConfig = URLSessionConfiguration.ephemeral
             sessionConfig.timeoutIntervalForRequest = 1.0 + Double(i)
             let session = URLSession(configuration: sessionConfig)
+
+            defer {
+                session.invalidateAndCancel()
+            }
 
             guard let (data, response) = try? await session.data(from: resultUrl) else {
                 continue
@@ -199,6 +225,10 @@ class ConnectionManager {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 2.0
         let session = URLSession(configuration: sessionConfig)
+
+        defer {
+            session.invalidateAndCancel()
+        }
 
         guard let (data, response) = try? await session.data(from: url) else {
             throw ConnectionError.couldNotStartProcess
