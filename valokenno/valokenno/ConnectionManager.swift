@@ -14,7 +14,7 @@ class ConnectionManager {
     private let valokennoSSID = "Valokenno"
 
     public func checkConnection() async -> Bool {
-        guard await isCurrentNetworkValokennoWiFi() else {
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
             return false
         }
 
@@ -47,7 +47,7 @@ class ConnectionManager {
 
     public func getTimestamps() async throws -> ([String:[UInt32]], String?) {
         // check that connected at the beginning
-        guard await isCurrentNetworkValokennoWiFi() else {
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
             throw ConnectionError.initiallyNotConnectedToWifi
         }
 
@@ -128,7 +128,7 @@ class ConnectionManager {
 
     public func clearTimestamps() async throws {
         // check that connected at the beginning
-        guard await isCurrentNetworkValokennoWiFi() else {
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
             throw ConnectionError.initiallyNotConnectedToWifi
         }
 
@@ -214,7 +214,7 @@ class ConnectionManager {
 
     public func activateStarter() async throws {
         // check that connected to wifi
-        guard await isCurrentNetworkValokennoWiFi() else {
+        guard await isCurrentNetworkValokennoWiFi(isAfterReconnect: false) else {
             throw ConnectionError.initiallyNotConnectedToWifi
         }
 
@@ -290,10 +290,10 @@ class ConnectionManager {
             }
 
             monitor.pathUpdateHandler = { path in
-                Task {
+                Task.detached {
                     if path.status == .satisfied,
                        path.usesInterfaceType(.wifi),
-                       await self.isCurrentNetworkValokennoWiFi() {
+                       await self.isCurrentNetworkValokennoWiFi(isAfterReconnect: true) {
 
                         timeoutItem.cancel()
                         monitor.cancel()
@@ -307,9 +307,10 @@ class ConnectionManager {
         }
     }
 
-    /// Returns `true` if the currently connected network is the Valokenno WiFi. Otherwise returns `false`.
-    private func isCurrentNetworkValokennoWiFi() async -> Bool {
-        let maxAttempts = 3
+    /// - Parameter isAfterReconnect: Pass `true` if the phone has just rejoined the network, `false` otherwise.
+    /// - Returns: `true` if the currently connected network is the Valokenno WiFi. Otherwise returns `false`.
+    private func isCurrentNetworkValokennoWiFi(isAfterReconnect: Bool) async -> Bool {
+        let maxAttempts = isAfterReconnect ? 3 : 1
 
         for i in 0..<maxAttempts {
             let ssid = await withCheckedContinuation { cont in
