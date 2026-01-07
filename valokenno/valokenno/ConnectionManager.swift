@@ -13,19 +13,16 @@ class ConnectionManager {
     private let baseUrl = "http://192.168.4.1"
     private let valokennoSSID = "Valokenno"
 
-    private let urlSession: URLSession
-
-    init() {
-        urlSession = URLSession(configuration: .ephemeral)
-        urlSession.configuration.timeoutIntervalForRequest = 2.0 // TODO: this does not work
-    }
-
     public func checkConnection() async -> Bool {
         guard let url = URL(string: "\(baseUrl)/status") else {
             return false
         }
 
-        guard let (data, response) = try? await urlSession.data(from: url) else {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2.0
+        let session = URLSession(configuration: sessionConfig)
+
+        guard let (data, response) = try? await session.data(from: url) else {
             return false
         }
 
@@ -117,7 +114,11 @@ class ConnectionManager {
             throw ConnectionError.couldNotStartProcess
         }
 
-        guard let (_, response) = try? await urlSession.data(from: startUrl) else {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2.0
+        let session = URLSession(configuration: sessionConfig)
+
+        guard let (_, response) = try? await session.data(from: startUrl) else {
             throw ConnectionError.couldNotStartProcess
         }
 
@@ -129,7 +130,7 @@ class ConnectionManager {
         for _ in 0..<5 {
             try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
 
-            guard let (data, response) = try? await urlSession.data(from: resultUrl) else {
+            guard let (data, response) = try? await session.data(from: resultUrl) else {
                 continue
             }
 
@@ -164,7 +165,11 @@ class ConnectionManager {
             throw ConnectionError.couldNotStartProcess
         }
 
-        guard let (data, response) = try? await urlSession.data(from: url) else {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2.0
+        let session = URLSession(configuration: sessionConfig)
+
+        guard let (data, response) = try? await session.data(from: url) else {
             throw ConnectionError.couldNotStartProcess
         }
 
