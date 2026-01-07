@@ -60,7 +60,7 @@ class ConnectionManager {
         // this do block is used to defer the session before entering the retry loop below
         do {
             let sessionConfig = URLSessionConfiguration.ephemeral
-            sessionConfig.timeoutIntervalForRequest = 1.0
+            sessionConfig.timeoutIntervalForRequest = 2.0
             let session = URLSession(configuration: sessionConfig)
 
             defer {
